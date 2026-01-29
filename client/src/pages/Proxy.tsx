@@ -22,6 +22,15 @@ export default function Proxy() {
       target = `https://${target}`;
     }
     
+    // Check for high-security sites
+    if (target.includes('google.com') || target.includes('cloudflare.com')) {
+      toast({
+        title: "SECURITY_BYPASS_ATTEMPT",
+        description: "Bypassing Cloudflare/Google protection... This may take a moment.",
+        variant: "destructive"
+      });
+    }
+
     setActiveUrl(target);
     addEntry.mutate({ url: target, query: "Direct Navigation" });
   };

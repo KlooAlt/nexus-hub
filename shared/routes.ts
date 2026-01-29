@@ -161,6 +161,35 @@ export const api = {
       responses: {
         200: z.array(z.any()),
       },
+    },
+    voice: {
+      offer: {
+        method: 'POST' as const,
+        path: '/api/chat/voice/offer',
+        input: z.object({
+          recipientId: z.number(),
+          offer: z.any(),
+        }),
+        responses: { 200: z.any() },
+      },
+      answer: {
+        method: 'POST' as const,
+        path: '/api/chat/voice/answer',
+        input: z.object({
+          recipientId: z.number(),
+          answer: z.any(),
+        }),
+        responses: { 200: z.any() },
+      },
+      ice: {
+        method: 'POST' as const,
+        path: '/api/chat/voice/ice',
+        input: z.object({
+          recipientId: z.number(),
+          candidate: z.any(),
+        }),
+        responses: { 200: z.any() },
+      }
     }
   },
   proxy: {

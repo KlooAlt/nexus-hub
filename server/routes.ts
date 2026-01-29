@@ -223,6 +223,40 @@ export async function registerRoutes(
     res.json(users);
   });
 
+  // === VOICE CALL SIGNALING (SIMPLE POLLING/STORE) ===
+  const signals = new Map<number, any[]>();
+
+  app.post(api.chat.voice.offer.path, requireAuth, (req, res) => {
+    const { recipientId, offer } = api.chat.voice.offer.input.parse(req.body);
+    const s = signals.get(recipientId) || [];
+    s.push({ type: 'offer', from: req.session.userId, offer });
+    signals.set(recipientId, s);
+    res.json({ success: true });
+  });
+
+  app.post(api.chat.voice.answer.path, requireAuth, (req, res) => {
+    const { recipientId, answer } = api.chat.voice.answer.input.parse(req.body);
+    const s = signals.get(recipientId) || [];
+    s.push({ type: 'answer', from: req.session.userId, answer });
+    signals.set(recipientId, s);
+    res.json({ success: true });
+  });
+
+  app.post(api.chat.voice.ice.path, requireAuth, (req, res) => {
+    const { recipientId, candidate } = api.chat.voice.ice.input.parse(req.body);
+    const s = signals.get(recipientId) || [];
+    s.push({ type: 'ice', from: req.session.userId, candidate });
+    signals.set(recipientId, s);
+    res.json({ success: true });
+  });
+
+  app.get('/api/chat/voice/poll', requireAuth, (req, res) => {
+    const userId = req.session.userId!;
+    const s = signals.get(userId) || [];
+    signals.set(userId, []); // Clear after polling
+    res.json(s);
+  });
+
   // === PROXY ===
   app.get(api.proxy.fetch.path, requireAuth, async (req, res) => {
     try {
