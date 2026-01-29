@@ -1,11 +1,10 @@
 
 import { db } from "./db";
-import {
-  users, accessKeys, searchHistory, messages,
+import { users, accessKeys, searchHistory, messages,
   type User, type AccessKey, type HistoryItem, type Message,
   type CreateKeyRequest, type CreateHistoryRequest, type CreateMessageRequest
 } from "@shared/schema";
-import { eq, desc, and, or, gt } from "drizzle-orm";
+import { eq, desc, and, or, gt, sql } from "drizzle-orm";
 
 export interface IStorage {
   // User & Auth
@@ -128,7 +127,7 @@ export class DatabaseStorage implements IStorage {
     })
     .from(messages)
     .innerJoin(users, eq(messages.senderId, users.id))
-    .where(eq(messages.recipientId, null as any)) // null check
+    .where(sql`${messages.recipientId} IS NULL`)
     .orderBy(messages.createdAt);
   }
 

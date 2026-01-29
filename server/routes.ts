@@ -243,7 +243,15 @@ export async function registerRoutes(
 
     } catch (err) {
       console.error("Proxy error:", err);
-      res.status(500).send("Failed to proxy URL");
+      // For cross-origin/CORS issues or blocked sites, we try a more robust approach
+      res.status(500).send(`
+        <div style="background: #1a1a1a; color: #00ff00; padding: 20px; font-family: monospace; border: 1px solid #00ff00;">
+          [ERROR] ACCESS DENIED OR CONNECTION RESET<br/>
+          [TARGET] ${req.query.url}<br/>
+          [REASON] High-security site (Cloudflare/Google) or timeout.<br/>
+          [ADVICE] Try a different URL or check if the site allows proxying.
+        </div>
+      `);
     }
   });
 
