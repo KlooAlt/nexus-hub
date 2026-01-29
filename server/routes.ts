@@ -175,12 +175,9 @@ export async function registerRoutes(
 
   // === CHAT ===
   app.get(api.chat.list.path, requireAuth, async (req, res) => {
-    // If specific conversation requested? 
-    // The simplified API contract just gets public messages or specific logic
-    // Let's implement getting PUBLIC messages by default for the list endpoint
-    // Or if there's a query param for recipient
     const recipientId = req.query.recipientId ? Number(req.query.recipientId) : undefined;
-    const messages = await storage.getMessages(req.session.userId!, recipientId);
+    const groupId = req.query.groupId ? Number(req.query.groupId) : undefined;
+    const messages = await storage.getMessages(req.session.userId!, recipientId, groupId);
     res.json(messages);
   });
 
@@ -189,9 +186,36 @@ export async function registerRoutes(
     const message = await storage.createMessage({
       senderId: req.session.userId!,
       recipientId: input.recipientId,
+      groupId: input.groupId,
       content: input.content
     });
     res.status(201).json(message);
+  });
+
+  app.post(api.chat.createGroup.path, requireAuth, async (req, res) => {
+    const { name } = api.chat.createGroup.input.parse(req.body);
+    const inviteCode = `GC-${randomBytes(3).toString('hex').toUpperCase()}`;
+    const group = await storage.createGroup({
+      name,
+      inviteCode,
+      ownerId: req.session.userId!
+    });
+    res.status(201).json(group);
+  });
+
+  app.post(api.chat.joinGroup.path, requireAuth, async (req, res) => {
+    const { inviteCode } = api.chat.joinGroup.input.parse(req.body);
+    const group = await storage.getGroupByCode(inviteCode);
+    if (!group) {
+      return res.status(404).json({ message: "Invalid group code" });
+    }
+    await storage.joinGroup(req.session.userId!, group.id);
+    res.json(group);
+  });
+
+  app.get(api.chat.listGroups.path, requireAuth, async (req, res) => {
+    const groups = await storage.getUserGroups(req.session.userId!);
+    res.json(groups);
   });
 
   app.get(api.chat.users.path, requireAuth, async (req, res) => {

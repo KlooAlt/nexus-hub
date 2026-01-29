@@ -36,11 +36,29 @@ export const searchHistory = pgTable("search_history", {
   visitedAt: timestamp("visited_at").defaultNow(),
 });
 
-// Chat messages
+// Group Chats
+export const groupChats = pgTable("group_chats", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  inviteCode: text("invite_code").notNull().unique(),
+  ownerId: integer("owner_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// GC Members
+export const groupChatMembers = pgTable("group_chat_members", {
+  id: serial("id").primaryKey(),
+  groupId: integer("group_id").notNull().references(() => groupChats.id),
+  userId: integer("user_id").notNull().references(() => users.id),
+  joinedAt: timestamp("joined_at").defaultNow(),
+});
+
+// Update messages to support GCs
 export const messages = pgTable("messages", {
   id: serial("id").primaryKey(),
   senderId: integer("sender_id").notNull().references(() => users.id),
-  recipientId: integer("recipient_id").references(() => users.id), // Null for public chat
+  recipientId: integer("recipient_id").references(() => users.id),
+  groupId: integer("group_id").references(() => groupChats.id), // Added for GCs
   content: text("content").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -51,6 +69,18 @@ export const usersRelations = relations(users, ({ many }) => ({
   sentMessages: many(messages, { relationName: "sender" }),
   receivedMessages: many(messages, { relationName: "recipient" }),
   createdKeys: many(accessKeys),
+  groups: many(groupChatMembers),
+}));
+
+export const groupChatsRelations = relations(groupChats, ({ one, many }) => ({
+  owner: one(users, { fields: [groupChats.ownerId], references: [users.id] }),
+  members: many(groupChatMembers),
+  messages: many(messages),
+}));
+
+export const groupChatMembersRelations = relations(groupChatMembers, ({ one }) => ({
+  group: one(groupChats, { fields: [groupChatMembers.groupId], references: [groupChats.id] }),
+  user: one(users, { fields: [groupChatMembers.userId], references: [users.id] }),
 }));
 
 export const messagesRelations = relations(messages, ({ one }) => ({
@@ -63,6 +93,10 @@ export const messagesRelations = relations(messages, ({ one }) => ({
     fields: [messages.recipientId],
     references: [users.id],
     relationName: "recipient",
+  }),
+  group: one(groupChats, {
+    fields: [messages.groupId],
+    references: [groupChats.id],
   }),
 }));
 

@@ -25,10 +25,16 @@ export interface IStorage {
   clearHistory(userId: number): Promise<void>;
 
   // Chat
-  getMessages(currentUserId: number, recipientId?: number): Promise<(Message & { senderName: string })[]>;
+  getMessages(currentUserId: number, recipientId?: number, groupId?: number): Promise<(Message & { senderName: string })[]>;
   getPublicMessages(): Promise<(Message & { senderName: string })[]>;
-  createMessage(msg: { senderId: number; recipientId?: number | null; content: string }): Promise<Message>;
+  createMessage(msg: { senderId: number; recipientId?: number | null; groupId?: number | null; content: string }): Promise<Message>;
   getAllUsers(): Promise<User[]>;
+
+  // Groups
+  createGroup(data: { name: string; inviteCode: string; ownerId: number }): Promise<any>;
+  joinGroup(userId: number, groupId: number): Promise<void>;
+  getGroupByCode(code: string): Promise<any>;
+  getUserGroups(userId: number): Promise<any[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -90,13 +96,29 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Chat
-  async getMessages(currentUserId: number, recipientId?: number): Promise<(Message & { senderName: string })[]> {
-    // If recipientId is provided, get DMs between current user and recipient
+  async getMessages(currentUserId: number, recipientId?: number, groupId?: number): Promise<(Message & { senderName: string })[]> {
+    if (groupId) {
+      return await db.select({
+        id: messages.id,
+        senderId: messages.senderId,
+        recipientId: messages.recipientId,
+        groupId: messages.groupId,
+        content: messages.content,
+        createdAt: messages.createdAt,
+        senderName: users.username,
+      })
+      .from(messages)
+      .innerJoin(users, eq(messages.senderId, users.id))
+      .where(eq(messages.groupId, groupId))
+      .orderBy(messages.createdAt);
+    }
+
     if (recipientId) {
       return await db.select({
         id: messages.id,
         senderId: messages.senderId,
         recipientId: messages.recipientId,
+        groupId: messages.groupId,
         content: messages.content,
         createdAt: messages.createdAt,
         senderName: users.username,
@@ -112,7 +134,6 @@ export class DatabaseStorage implements IStorage {
       .orderBy(messages.createdAt);
     } 
     
-    // Otherwise get public messages (where recipientId is null)
     return await this.getPublicMessages();
   }
 
@@ -121,23 +142,62 @@ export class DatabaseStorage implements IStorage {
       id: messages.id,
       senderId: messages.senderId,
       recipientId: messages.recipientId,
+      groupId: messages.groupId,
       content: messages.content,
       createdAt: messages.createdAt,
       senderName: users.username,
     })
     .from(messages)
     .innerJoin(users, eq(messages.senderId, users.id))
-    .where(sql`${messages.recipientId} IS NULL`)
+    .where(sql`${messages.recipientId} IS NULL AND ${messages.groupId} IS NULL`)
     .orderBy(messages.createdAt);
   }
 
-  async createMessage(msg: { senderId: number; recipientId?: number | null; content: string }): Promise<Message> {
+  async createMessage(msg: { senderId: number; recipientId?: number | null; groupId?: number | null; content: string }): Promise<Message> {
     const [message] = await db.insert(messages).values(msg).returning();
     return message;
   }
 
   async getAllUsers(): Promise<User[]> {
     return await db.select().from(users);
+  }
+
+  // Groups
+  async createGroup(data: { name: string; inviteCode: string; ownerId: number }): Promise<any> {
+    const [group] = await db.insert(groupChats).values(data).returning();
+    // Add owner as member
+    await db.insert(groupChatMembers).values({
+      groupId: group.id,
+      userId: data.ownerId
+    });
+    return group;
+  }
+
+  async joinGroup(userId: number, groupId: number): Promise<void> {
+    // Check if already a member
+    const [existing] = await db.select().from(groupChatMembers).where(
+      and(eq(groupChatMembers.groupId, groupId), eq(groupChatMembers.userId, userId))
+    );
+    if (!existing) {
+      await db.insert(groupChatMembers).values({ groupId, userId });
+    }
+  }
+
+  async getGroupByCode(code: string): Promise<any> {
+    const [group] = await db.select().from(groupChats).where(eq(groupChats.inviteCode, code));
+    return group;
+  }
+
+  async getUserGroups(userId: number): Promise<any[]> {
+    return await db.select({
+      id: groupChats.id,
+      name: groupChats.name,
+      inviteCode: groupChats.inviteCode,
+      ownerId: groupChats.ownerId
+    })
+    .from(groupChats)
+    .innerJoin(groupChatMembers, eq(groupChatMembers.groupId, groupChats.id))
+    .where(eq(groupChatMembers.userId, userId));
   }
 }
 

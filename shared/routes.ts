@@ -122,6 +122,7 @@ export const api = {
       input: z.object({
         content: z.string(),
         recipientId: z.number().optional(),
+        groupId: z.number().optional(),
       }),
       responses: {
         201: z.custom<typeof messages.$inferSelect>(),
@@ -132,6 +133,33 @@ export const api = {
       path: '/api/chat/users',
       responses: {
         200: z.array(z.custom<typeof users.$inferSelect>()),
+      },
+    },
+    createGroup: {
+      method: 'POST' as const,
+      path: '/api/chat/groups',
+      input: z.object({
+        name: z.string(),
+      }),
+      responses: {
+        201: z.any(), // Group object
+      },
+    },
+    joinGroup: {
+      method: 'POST' as const,
+      path: '/api/chat/groups/join',
+      input: z.object({
+        inviteCode: z.string(),
+      }),
+      responses: {
+        200: z.any(),
+      },
+    },
+    listGroups: {
+      method: 'GET' as const,
+      path: '/api/chat/groups',
+      responses: {
+        200: z.array(z.any()),
       },
     }
   },
