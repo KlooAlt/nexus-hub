@@ -3,14 +3,55 @@ import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { useAuth } from "@/hooks/use-auth";
+import { Loader2 } from "lucide-react";
+
+import Login from "@/pages/Login";
+import Proxy from "@/pages/Proxy";
+import Chat from "@/pages/Chat";
+import History from "@/pages/History";
+import Admin from "@/pages/Admin";
 import NotFound from "@/pages/not-found";
+
+function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-12 h-12 text-primary animate-spin" />
+          <div className="text-primary font-mono tracking-widest animate-pulse">
+            ESTABLISHING_UPLINK...
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Login />;
+  }
+
+  return <Component />;
+}
 
 function Router() {
   return (
     <Switch>
-      {/* Add pages below */}
-      {/* <Route path="/" component={Home}/> */}
-      {/* Fallback to 404 */}
+      <Route path="/" component={Login} />
+      <Route path="/proxy">
+        <ProtectedRoute component={Proxy} />
+      </Route>
+      <Route path="/chat">
+        <ProtectedRoute component={Chat} />
+      </Route>
+      <Route path="/history">
+        <ProtectedRoute component={History} />
+      </Route>
+      <Route path="/admin">
+        <ProtectedRoute component={Admin} />
+      </Route>
       <Route component={NotFound} />
     </Switch>
   );
