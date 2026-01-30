@@ -20,14 +20,79 @@ export default function Chat() {
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
   const [groupName, setGroupName] = useState("");
   const [inviteCode, setInviteCode] = useState("");
-  const [isCalling, setIsCalling] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  
-  const pc = useRef<RTCPeerConnection | null>(null);
-  const localStream = useRef<MediaStream | null>(null);
-  const remoteAudio = useRef<HTMLAudioElement | null>(null);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [participants, setParticipants] = useState<number[]>([]);
 
-  const { data: groups = [] } = useQuery({ queryKey: ['/api/chat/groups'] });
+  // Soundboard & Ringtones
+  const ringtoneAudio = useRef<HTMLAudioElement | null>(null);
+  const soundboardAudio = useRef<HTMLAudioElement | null>(null);
+
+  const { data: userSettings, refetch: refetchSettings } = useQuery({
+    queryKey: ['/api/auth/me'],
+    queryFn: async () => {
+      const res = await fetch('/api/auth/me');
+      return res.json();
+    }
+  });
+
+  const updateSettings = useMutation({
+    mutationFn: async (settings: any) => {
+      await fetch('/api/user/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings),
+      });
+    },
+    onSuccess: () => refetchSettings(),
+  });
+
+  useEffect(() => {
+    if (isCalling && userSettings?.ringtoneUrl) {
+      ringtoneAudio.current = new Audio(userSettings.ringtoneUrl);
+      ringtoneAudio.current.loop = true;
+      ringtoneAudio.current.play().catch(() => {});
+    } else {
+      ringtoneAudio.current?.pause();
+    }
+    return () => ringtoneAudio.current?.pause();
+  }, [isCalling, userSettings?.ringtoneUrl]);
+
+  const toggleMute = () => {
+    if (localStream.current) {
+      const audioTrack = localStream.current.getAudioTracks()[0];
+      if (audioTrack) {
+        audioTrack.enabled = !audioTrack.enabled;
+        setIsMuted(!audioTrack.enabled);
+      }
+    }
+  };
+
+  const toggleScreenShare = async () => {
+    try {
+      if (!isScreenSharing) {
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        const videoTrack = screenStream.getVideoTracks()[0];
+        if (pc.current && videoTrack) {
+          const sender = pc.current.getSenders().find(s => s.track?.kind === 'video');
+          if (sender) sender.replaceTrack(videoTrack);
+          else pc.current.addTrack(videoTrack, screenStream);
+        }
+        setIsScreenSharing(true);
+        videoTrack.onended = () => setIsScreenSharing(false);
+      } else {
+        // Switch back to camera or just stop
+        setIsScreenSharing(false);
+      }
+    } catch (e) {
+      toast({ title: "SCREEN_SHARE_FAILED", variant: "destructive" });
+    }
+  };
+
+  const playSound = (url: string) => {
+    soundboardAudio.current = new Audio(url);
+    soundboardAudio.current.play().catch(() => {});
+  };
 
   const createGroup = useMutation({
     mutationFn: async (name: string) => {
@@ -264,14 +329,86 @@ export default function Chat() {
       </div>
       <audio ref={remoteAudio} autoPlay />
       {isCalling && (
-        <div className="fixed bottom-8 right-8 cyber-box p-4 bg-primary/20 border-primary animate-pulse z-50">
-          <div className="flex items-center gap-3">
-            <Phone className="w-5 h-5 animate-bounce" />
-            <span className="font-display text-sm tracking-widest">VOICE_LINK_ESTABLISHED</span>
-            <CyberButton variant="destructive" onClick={() => { pc.current?.close(); setIsCalling(false); }}>TERMINATE</CyberButton>
+        <div className="fixed bottom-8 right-8 cyber-box p-6 bg-black/90 border-primary shadow-[0_0_20px_rgba(0,255,0,0.2)] z-50 min-w-[300px]">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse" />
+                <span className="font-display text-sm tracking-widest text-glow">VOICE_LINK_ESTABLISHED</span>
+              </div>
+              <div className="text-[10px] opacity-50 uppercase">Secured_Line</div>
+            </div>
+
+            <div className="grid grid-cols-4 gap-2">
+              <CyberButton 
+                variant={isMuted ? "destructive" : "outline"} 
+                onClick={toggleMute}
+                className="h-12"
+              >
+                {isMuted ? <Phone className="w-4 h-4" /> : <Phone className="w-4 h-4" />}
+              </CyberButton>
+              <CyberButton 
+                variant={isScreenSharing ? "primary" : "outline"} 
+                onClick={toggleScreenShare}
+                className="h-12"
+              >
+                <Plus className="w-4 h-4" />
+              </CyberButton>
+              <CyberButton 
+                variant="outline" 
+                onClick={() => playSound('https://www.myinstants.com/media/sounds/discord-notification.mp3')}
+                className="h-12"
+              >
+                <Hash className="w-4 h-4" />
+              </CyberButton>
+              <CyberButton 
+                variant="destructive" 
+                onClick={() => { pc.current?.close(); setIsCalling(false); }}
+                className="h-12"
+              >
+                OFF
+              </CyberButton>
+            </div>
+
+            <div className="border-t border-primary/20 pt-2">
+              <div className="text-[10px] uppercase mb-2 opacity-50 font-bold">In_Session:</div>
+              <div className="flex flex-wrap gap-2">
+                <div className="text-[10px] px-2 py-1 border border-primary/30 bg-primary/5">USER_ME</div>
+                {participants.map(p => (
+                  <div key={p} className="text-[10px] px-2 py-1 border border-primary/30 bg-primary/5">NODE_{p}</div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       )}
+      
+      {/* Settings Overlay (Simplified) */}
+      <div className="fixed top-20 right-8 z-40">
+        <CyberCard className="p-4 w-64 bg-black/80 backdrop-blur">
+          <div className="text-xs font-display mb-3 text-glow">COMMS_CONFIG</div>
+          <div className="space-y-4">
+            <div className="space-y-1">
+              <div className="text-[10px] opacity-50 uppercase">Ringtone_URL</div>
+              <CyberInput 
+                value={userSettings?.ringtoneUrl || ""} 
+                onChange={e => updateSettings.mutate({ ringtoneUrl: e.target.value })}
+                className="h-8 text-[10px]"
+                placeholder="YouTube/Audio URL"
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="text-[10px] opacity-50 uppercase">Mute_Alerts</div>
+              <input 
+                type="checkbox" 
+                checked={userSettings?.muteNotifications}
+                onChange={e => updateSettings.mutate({ muteNotifications: e.target.checked })}
+                className="accent-primary"
+              />
+            </div>
+          </div>
+        </CyberCard>
+      </div>
     </Layout>
   );
 }
