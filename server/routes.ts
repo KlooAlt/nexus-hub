@@ -223,14 +223,42 @@ export async function registerRoutes(
     res.json(users);
   });
 
-  // === VOICE CALL SIGNALING (SIMPLE POLLING/STORE) ===
+  // === VOICE CALL SIGNALING (ENHANCED) ===
   const signals = new Map<number, any[]>();
+  const activeCalls = new Map<string, Set<number>>(); // key: targetId (user or group), value: set of userIds
 
   app.post(api.chat.voice.offer.path, requireAuth, (req, res) => {
-    const { recipientId, offer } = api.chat.voice.offer.input.parse(req.body);
+    const { recipientId, offer, isGroup } = req.body;
     const s = signals.get(recipientId) || [];
-    s.push({ type: 'offer', from: req.session.userId, offer });
+    s.push({ type: 'offer', from: req.session.userId, offer, isGroup });
     signals.set(recipientId, s);
+    res.json({ success: true });
+  });
+
+  app.get('/api/chat/voice/active', requireAuth, (req, res) => {
+    const { id, isGroup } = req.query;
+    const key = `${isGroup ? 'g' : 'u'}${id}`;
+    const participants = activeCalls.get(key) || new Set();
+    res.json(Array.from(participants));
+  });
+
+  app.post('/api/chat/voice/join', requireAuth, (req, res) => {
+    const { id, isGroup } = req.body;
+    const key = `${isGroup ? 'g' : 'u'}${id}`;
+    const participants = activeCalls.get(key) || new Set();
+    participants.add(req.session.userId!);
+    activeCalls.set(key, participants);
+    res.json({ success: true });
+  });
+
+  app.post('/api/chat/voice/leave', requireAuth, (req, res) => {
+    const { id, isGroup } = req.body;
+    const key = `${isGroup ? 'g' : 'u'}${id}`;
+    const participants = activeCalls.get(key);
+    if (participants) {
+      participants.delete(req.session.userId!);
+      if (participants.size === 0) activeCalls.delete(key);
+    }
     res.json({ success: true });
   });
 
