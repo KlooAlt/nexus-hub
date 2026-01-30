@@ -2,10 +2,11 @@ import { useState, useRef, useEffect } from "react";
 import { Layout } from "@/components/Layout";
 import { CyberInput } from "@/components/CyberInput";
 import { CyberButton } from "@/components/CyberButton";
+import { CyberCard } from "@/components/CyberCard";
 import { useChat } from "@/hooks/use-chat";
 import { useAuth } from "@/hooks/use-auth";
 import { format } from "date-fns";
-import { Send, Users, Hash, Lock, Phone, Plus, MessageSquare } from "lucide-react";
+import { Send, Users, Hash, Lock, Phone, Plus, MessageSquare, Volume2, Monitor } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
@@ -20,14 +21,19 @@ export default function Chat() {
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
   const [groupName, setGroupName] = useState("");
   const [inviteCode, setInviteCode] = useState("");
+  const [isCalling, setIsCalling] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [participants, setParticipants] = useState<number[]>([]);
-
-  // Soundboard & Ringtones
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  const pc = useRef<RTCPeerConnection | null>(null);
+  const localStream = useRef<MediaStream | null>(null);
+  const remoteAudio = useRef<HTMLAudioElement | null>(null);
   const ringtoneAudio = useRef<HTMLAudioElement | null>(null);
   const soundboardAudio = useRef<HTMLAudioElement | null>(null);
 
+  const { data: groups = [] } = useQuery({ queryKey: ['/api/chat/groups'] });
   const { data: userSettings, refetch: refetchSettings } = useQuery({
     queryKey: ['/api/auth/me'],
     queryFn: async () => {
@@ -46,53 +52,6 @@ export default function Chat() {
     },
     onSuccess: () => refetchSettings(),
   });
-
-  useEffect(() => {
-    if (isCalling && userSettings?.ringtoneUrl) {
-      ringtoneAudio.current = new Audio(userSettings.ringtoneUrl);
-      ringtoneAudio.current.loop = true;
-      ringtoneAudio.current.play().catch(() => {});
-    } else {
-      ringtoneAudio.current?.pause();
-    }
-    return () => ringtoneAudio.current?.pause();
-  }, [isCalling, userSettings?.ringtoneUrl]);
-
-  const toggleMute = () => {
-    if (localStream.current) {
-      const audioTrack = localStream.current.getAudioTracks()[0];
-      if (audioTrack) {
-        audioTrack.enabled = !audioTrack.enabled;
-        setIsMuted(!audioTrack.enabled);
-      }
-    }
-  };
-
-  const toggleScreenShare = async () => {
-    try {
-      if (!isScreenSharing) {
-        const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-        const videoTrack = screenStream.getVideoTracks()[0];
-        if (pc.current && videoTrack) {
-          const sender = pc.current.getSenders().find(s => s.track?.kind === 'video');
-          if (sender) sender.replaceTrack(videoTrack);
-          else pc.current.addTrack(videoTrack, screenStream);
-        }
-        setIsScreenSharing(true);
-        videoTrack.onended = () => setIsScreenSharing(false);
-      } else {
-        // Switch back to camera or just stop
-        setIsScreenSharing(false);
-      }
-    } catch (e) {
-      toast({ title: "SCREEN_SHARE_FAILED", variant: "destructive" });
-    }
-  };
-
-  const playSound = (url: string) => {
-    soundboardAudio.current = new Audio(url);
-    soundboardAudio.current.play().catch(() => {});
-  };
 
   const createGroup = useMutation({
     mutationFn: async (name: string) => {
@@ -188,6 +147,41 @@ export default function Chat() {
     });
   };
 
+  const toggleMute = () => {
+    if (localStream.current) {
+      const audioTrack = localStream.current.getAudioTracks()[0];
+      if (audioTrack) {
+        audioTrack.enabled = !audioTrack.enabled;
+        setIsMuted(!audioTrack.enabled);
+      }
+    }
+  };
+
+  const toggleScreenShare = async () => {
+    try {
+      if (!isScreenSharing) {
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        const videoTrack = screenStream.getVideoTracks()[0];
+        if (pc.current && videoTrack) {
+          const sender = pc.current.getSenders().find(s => s.track?.kind === 'video');
+          if (sender) sender.replaceTrack(videoTrack);
+          else pc.current.addTrack(videoTrack, screenStream);
+        }
+        setIsScreenSharing(true);
+        videoTrack.onended = () => setIsScreenSharing(false);
+      } else {
+        setIsScreenSharing(false);
+      }
+    } catch (e) {
+      toast({ title: "SCREEN_SHARE_FAILED", variant: "destructive" });
+    }
+  };
+
+  const playSound = (url: string) => {
+    soundboardAudio.current = new Audio(url);
+    soundboardAudio.current.play().catch(() => {});
+  };
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -244,9 +238,9 @@ export default function Chat() {
               <div className="my-2 px-3 text-[10px] text-muted-foreground uppercase font-bold tracking-wider mt-4">PRIVATE_GC</div>
               <div className="px-2 space-y-2 mb-2">
                 <CyberInput value={groupName} onChange={e => setGroupName(e.target.value)} placeholder="GROUP_NAME" className="h-8 text-[10px]" />
-                <CyberButton size="sm" onClick={() => createGroup.mutate(groupName)} className="w-full h-8 text-[10px]">INITIALIZE_GC</CyberButton>
+                <CyberButton onClick={() => createGroup.mutate(groupName)} className="w-full h-8 text-[10px]">INITIALIZE_GC</CyberButton>
                 <CyberInput value={inviteCode} onChange={e => setInviteCode(e.target.value)} placeholder="GC_CODE" className="h-8 text-[10px]" />
-                <CyberButton size="sm" onClick={() => joinGroup.mutate(inviteCode)} className="w-full h-8 text-[10px]">JOIN_BY_CODE</CyberButton>
+                <CyberButton onClick={() => joinGroup.mutate(inviteCode)} className="w-full h-8 text-[10px]">JOIN_BY_CODE</CyberButton>
               </div>
 
               {Array.isArray(groups) && groups.map((g: any) => (
@@ -299,6 +293,12 @@ export default function Chat() {
                  "BROADCAST_HUB"}
               </span>
             </div>
+            {selectedGroupId && (
+              <CyberButton onClick={() => startCall(selectedGroupId)} className="h-8">
+                <Phone className="w-3 h-3 mr-2" />
+                CALL_GC
+              </CyberButton>
+            )}
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -341,21 +341,21 @@ export default function Chat() {
 
             <div className="grid grid-cols-4 gap-2">
               <CyberButton 
-                variant={isMuted ? "destructive" : "outline"} 
+                variant={isMuted ? "destructive" : "secondary"} 
                 onClick={toggleMute}
                 className="h-12"
               >
-                {isMuted ? <Phone className="w-4 h-4" /> : <Phone className="w-4 h-4" />}
+                {isMuted ? <Volume2 className="w-4 h-4 opacity-50" /> : <Volume2 className="w-4 h-4" />}
               </CyberButton>
               <CyberButton 
-                variant={isScreenSharing ? "primary" : "outline"} 
+                variant={isScreenSharing ? "primary" : "secondary"} 
                 onClick={toggleScreenShare}
                 className="h-12"
               >
-                <Plus className="w-4 h-4" />
+                <Monitor className="w-4 h-4" />
               </CyberButton>
               <CyberButton 
-                variant="outline" 
+                variant="secondary" 
                 onClick={() => playSound('https://www.myinstants.com/media/sounds/discord-notification.mp3')}
                 className="h-12"
               >
@@ -383,7 +383,6 @@ export default function Chat() {
         </div>
       )}
       
-      {/* Settings Overlay (Simplified) */}
       <div className="fixed top-20 right-8 z-40">
         <CyberCard className="p-4 w-64 bg-black/80 backdrop-blur">
           <div className="text-xs font-display mb-3 text-glow">COMMS_CONFIG</div>
