@@ -171,8 +171,24 @@ export default function Chat() {
   };
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    if ("Notification" in window && Notification.permission !== "granted") {
+      Notification.requestPermission();
+    }
+  }, []);
+
+  useEffect(() => {
+    if (messages && messages.length > 0) {
+      const lastMsg = messages[messages.length - 1];
+      if (lastMsg.senderId !== currentUser?.id && !userSettings?.muteNotifications) {
+        if ("Notification" in window && Notification.permission === "granted") {
+          new Notification(`NEW_SIGNAL: ${lastMsg.senderName}`, {
+            body: lastMsg.content,
+            icon: "/favicon.ico"
+          });
+        }
+      }
+    }
+  }, [messages, currentUser?.id, userSettings?.muteNotifications]);
 
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
