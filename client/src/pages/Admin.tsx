@@ -108,6 +108,7 @@ export default function Admin() {
                 <thead>
                   <tr className="border-b border-primary/20 text-xs font-mono uppercase text-muted-foreground">
                     <th className="p-4 font-normal">Key String</th>
+                    <th className="p-4 font-normal">User</th>
                     <th className="p-4 font-normal">Type</th>
                     <th className="p-4 font-normal">Status</th>
                     <th className="p-4 font-normal">Created</th>
@@ -120,6 +121,11 @@ export default function Admin() {
                       <td className="p-4 text-primary font-bold tracking-widest flex items-center gap-2">
                         <Key className="w-3 h-3 opacity-50" />
                         {key.key}
+                      </td>
+                      <td className="p-4">
+                        <span className="text-xs text-glow uppercase tracking-tighter">
+                          {key.username || "---"}
+                        </span>
                       </td>
                       <td className="p-4 uppercase">
                         <span className={`px-2 py-1 text-[10px] border ${
@@ -153,7 +159,7 @@ export default function Admin() {
                   ))}
                   {!keys?.length && (
                     <tr>
-                      <td colSpan={5} className="p-8 text-center text-muted-foreground italic">
+                      <td colSpan={6} className="p-8 text-center text-muted-foreground italic">
                         NO ACTIVE KEYS FOUND
                       </td>
                     </tr>
