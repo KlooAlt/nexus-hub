@@ -158,23 +158,7 @@ export default function Chat() {
   };
 
   const toggleScreenShare = async () => {
-    try {
-      if (!isScreenSharing) {
-        const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-        const videoTrack = screenStream.getVideoTracks()[0];
-        if (pc.current && videoTrack) {
-          const sender = pc.current.getSenders().find(s => s.track?.kind === 'video');
-          if (sender) sender.replaceTrack(videoTrack);
-          else pc.current.addTrack(videoTrack, screenStream);
-        }
-        setIsScreenSharing(true);
-        videoTrack.onended = () => setIsScreenSharing(false);
-      } else {
-        setIsScreenSharing(false);
-      }
-    } catch (e) {
-      toast({ title: "SCREEN_SHARE_FAILED", variant: "destructive" });
-    }
+    toast({ title: "DISABLED", description: "Screen sharing is restricted on this terminal." });
   };
 
   const playSound = (url: string) => {
@@ -350,7 +334,8 @@ export default function Chat() {
               <CyberButton 
                 variant={isScreenSharing ? "primary" : "secondary"} 
                 onClick={toggleScreenShare}
-                className="h-12"
+                className="h-12 opacity-50 cursor-not-allowed"
+                disabled
               >
                 <Monitor className="w-4 h-4" />
               </CyberButton>

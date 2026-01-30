@@ -147,8 +147,21 @@ export async function registerRoutes(
   });
 
   app.get(api.admin.listKeys.path, requireOwner, async (req, res) => {
-    const keys = await storage.listAccessKeys();
-    res.json(keys);
+    // Join with users to see who used the key
+    const keysWithUsers = await db.select({
+      id: accessKeys.id,
+      key: accessKeys.key,
+      type: accessKeys.type,
+      isUsed: accessKeys.isUsed,
+      durationMinutes: accessKeys.durationMinutes,
+      createdAt: accessKeys.createdAt,
+      username: users.username,
+    })
+    .from(accessKeys)
+    .leftJoin(users, eq(accessKeys.key, users.serialKey))
+    .orderBy(desc(accessKeys.createdAt));
+    
+    res.json(keysWithUsers);
   });
 
   app.delete(api.admin.deleteKey.path, requireOwner, async (req, res) => {

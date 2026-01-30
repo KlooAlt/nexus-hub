@@ -114,6 +114,7 @@ export class DatabaseStorage implements IStorage {
     }
 
     if (recipientId) {
+      // FIX: Ensure both directions of PMs are fetched
       return await db.select({
         id: messages.id,
         senderId: messages.senderId,
@@ -126,9 +127,12 @@ export class DatabaseStorage implements IStorage {
       .from(messages)
       .innerJoin(users, eq(messages.senderId, users.id))
       .where(
-        or(
-          and(eq(messages.senderId, currentUserId), eq(messages.recipientId, recipientId)),
-          and(eq(messages.senderId, recipientId), eq(messages.recipientId, currentUserId))
+        and(
+          sql`${messages.groupId} IS NULL`,
+          or(
+            and(eq(messages.senderId, currentUserId), eq(messages.recipientId, recipientId)),
+            and(eq(messages.senderId, recipientId), eq(messages.recipientId, currentUserId))
+          )
         )
       )
       .orderBy(messages.createdAt);
