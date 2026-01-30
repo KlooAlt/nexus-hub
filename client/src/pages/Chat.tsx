@@ -184,7 +184,7 @@ export default function Chat() {
                 <CyberButton size="sm" onClick={() => joinGroup.mutate(inviteCode)} className="w-full h-8 text-[10px]">JOIN_BY_CODE</CyberButton>
               </div>
 
-              {groups?.map(g => (
+              {Array.isArray(groups) && groups.map((g: any) => (
                 <button
                   key={g.id}
                   onClick={() => { setSelectedGroupId(g.id); setSelectedRecipientId(null); }}
@@ -229,7 +229,7 @@ export default function Chat() {
             <div className="flex items-center gap-2">
               {selectedGroupId ? <Users className="w-4 h-4 text-primary" /> : selectedRecipientId ? <Lock className="w-4 h-4 text-accent" /> : <Hash className="w-4 h-4 text-primary" />}
               <span className="font-display tracking-widest text-glow">
-                {selectedGroupId ? `GROUP::${groups.find(g => g.id === selectedGroupId)?.name}` : 
+                {selectedGroupId ? `GROUP::${(Array.isArray(groups) ? groups : []).find((g: any) => g.id === selectedGroupId)?.name}` : 
                  selectedRecipientId ? `LINK::${users?.find(u => u.id === selectedRecipientId)?.username}` : 
                  "BROADCAST_HUB"}
               </span>
@@ -268,7 +268,7 @@ export default function Chat() {
           <div className="flex items-center gap-3">
             <Phone className="w-5 h-5 animate-bounce" />
             <span className="font-display text-sm tracking-widest">VOICE_LINK_ESTABLISHED</span>
-            <CyberButton size="sm" variant="destructive" onClick={() => { pc.current?.close(); setIsCalling(false); }}>TERMINATE</CyberButton>
+            <CyberButton variant="destructive" onClick={() => { pc.current?.close(); setIsCalling(false); }}>TERMINATE</CyberButton>
           </div>
         </div>
       )}

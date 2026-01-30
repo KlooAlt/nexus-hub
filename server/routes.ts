@@ -1,4 +1,7 @@
 
+import { db } from "./db";
+import { users, accessKeys, searchHistory, messages, groupChats, groupChatMembers } from "@shared/schema";
+import { eq, desc, and, or, gt, sql } from "drizzle-orm";
 import type { Express, Request } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
@@ -101,7 +104,7 @@ export async function registerRoutes(
       }
       
       // Check expiration
-      if (user.expiresAt && new Date() > new user.expiresAt) {
+      if (user.expiresAt && new Date() > user.expiresAt) {
         return res.status(401).json({ message: "Account expired" });
       }
 
@@ -163,7 +166,8 @@ export async function registerRoutes(
     const input = api.history.create.input.parse(req.body);
     const entry = await storage.createHistory({
       userId: req.session.userId!,
-      ...input
+      url: input.url,
+      query: input.query ?? undefined
     });
     res.status(201).json(entry);
   });
