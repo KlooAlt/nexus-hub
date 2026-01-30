@@ -1,6 +1,6 @@
 
 import { db } from "./db";
-import { users, accessKeys, searchHistory, messages,
+import { users, accessKeys, searchHistory, messages, groupChats, groupChatMembers,
   type User, type AccessKey, type HistoryItem, type Message,
   type CreateKeyRequest, type CreateHistoryRequest, type CreateMessageRequest
 } from "@shared/schema";

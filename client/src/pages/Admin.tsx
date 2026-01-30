@@ -124,7 +124,7 @@ export default function Admin() {
                       </td>
                       <td className="p-4">
                         <span className="text-xs text-glow uppercase tracking-tighter">
-                          {key.username || "---"}
+                          {(key as any).username || "---"}
                         </span>
                       </td>
                       <td className="p-4 uppercase">
