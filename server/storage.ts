@@ -114,7 +114,6 @@ export class DatabaseStorage implements IStorage {
     }
 
     if (recipientId) {
-      // FIX: Ensure both directions of PMs are fetched
       return await db.select({
         id: messages.id,
         senderId: messages.senderId,

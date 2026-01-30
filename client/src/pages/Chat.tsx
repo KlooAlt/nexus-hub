@@ -270,17 +270,17 @@ export default function Chat() {
         <div className="flex-1 cyber-box p-0 flex flex-col overflow-hidden">
           <div className="p-4 border-b border-primary/20 bg-black/50 backdrop-blur flex items-center justify-between z-10">
             <div className="flex items-center gap-2">
-              {selectedGroupId ? <Users className="w-4 h-4 text-primary" /> : selectedRecipientId ? <Lock className="w-4 h-4 text-accent" /> : <Hash className="w-4 h-4 text-primary" />}
-              <span className="font-display tracking-widest text-glow">
-                {selectedGroupId ? `GROUP::${(Array.isArray(groups) ? groups : []).find((g: any) => g.id === selectedGroupId)?.name}` : 
-                 selectedRecipientId ? `LINK::${users?.find(u => u.id === selectedRecipientId)?.username}` : 
+              <Hash className="w-4 h-4 text-primary" />
+              <span className="font-display tracking-widest text-glow uppercase">
+                {selectedGroupId ? (Array.isArray(groups) ? groups : []).find((g: any) => g.id === selectedGroupId)?.name : 
+                 selectedRecipientId ? users?.find(u => u.id === selectedRecipientId)?.username : 
                  "BROADCAST_HUB"}
               </span>
             </div>
             {selectedGroupId && (
               <CyberButton onClick={() => startCall(selectedGroupId)} className="h-8">
                 <Phone className="w-3 h-3 mr-2" />
-                CALL_GC
+                JOIN_VOICE
               </CyberButton>
             )}
           </div>
