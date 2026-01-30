@@ -147,7 +147,7 @@ export async function registerRoutes(
   });
 
   app.get(api.admin.listKeys.path, requireOwner, async (req, res) => {
-    // Join with users to see who used the key
+    // Join with users to see who used the key, also select isUsed and duration
     const keysWithUsers = await db.select({
       id: accessKeys.id,
       key: accessKeys.key,

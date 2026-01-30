@@ -219,12 +219,16 @@ export default function Chat() {
                 BROADCAST_HUB
               </button>
 
-              <div className="my-2 px-3 text-[10px] text-muted-foreground uppercase font-bold tracking-wider mt-4">PRIVATE_GC</div>
+              <div className="my-2 px-3 text-[10px] text-muted-foreground uppercase font-bold tracking-wider mt-4 opacity-50">Private_Channels</div>
               <div className="px-2 space-y-2 mb-2">
-                <CyberInput value={groupName} onChange={e => setGroupName(e.target.value)} placeholder="GROUP_NAME" className="h-8 text-[10px]" />
-                <CyberButton onClick={() => createGroup.mutate(groupName)} className="w-full h-8 text-[10px]">INITIALIZE_GC</CyberButton>
-                <CyberInput value={inviteCode} onChange={e => setInviteCode(e.target.value)} placeholder="GC_CODE" className="h-8 text-[10px]" />
-                <CyberButton onClick={() => joinGroup.mutate(inviteCode)} className="w-full h-8 text-[10px]">JOIN_BY_CODE</CyberButton>
+                <div className="flex gap-1">
+                  <CyberInput value={groupName} onChange={e => setGroupName(e.target.value)} placeholder="NEW_GC_NAME" className="h-7 text-[10px]" />
+                  <CyberButton onClick={() => createGroup.mutate(groupName)} className="h-7 px-2 text-[10px] whitespace-nowrap">INIT</CyberButton>
+                </div>
+                <div className="flex gap-1">
+                  <CyberInput value={inviteCode} onChange={e => setInviteCode(e.target.value)} placeholder="GC_INVITE_CODE" className="h-7 text-[10px]" />
+                  <CyberButton onClick={() => joinGroup.mutate(inviteCode)} className="h-7 px-2 text-[10px] whitespace-nowrap">JOIN</CyberButton>
+                </div>
               </div>
 
               {Array.isArray(groups) && groups.map((g: any) => (
@@ -234,12 +238,12 @@ export default function Chat() {
                   className={cn(
                     "w-full text-left px-3 py-2 text-xs font-mono uppercase transition-colors flex items-center gap-2 border border-transparent",
                     selectedGroupId === g.id 
-                      ? "bg-primary/20 text-primary border-primary/50" 
+                      ? "bg-primary/20 text-primary border-primary/50 shadow-[0_0_10px_rgba(0,255,0,0.1)]" 
                       : "text-muted-foreground hover:bg-white/5 hover:text-white"
                   )}
                 >
-                  <MessageSquare className="w-3 h-3" />
-                  {g.name} <span className="text-[8px] opacity-40 ml-auto">[{g.inviteCode}]</span>
+                  <Hash className="w-3 h-3" />
+                  {g.name}
                 </button>
               ))}
 
