@@ -218,9 +218,17 @@ export async function registerRoutes(
     res.json(groups);
   });
 
+  app.patch("/api/user/settings", requireAuth, async (req, res) => {
+    const { ringtoneUrl, muteNotifications } = req.body;
+    await db.update(users)
+      .set({ ringtoneUrl, muteNotifications })
+      .where(eq(users.id, req.session.userId!));
+    res.json({ success: true });
+  });
+
   app.get(api.chat.users.path, requireAuth, async (req, res) => {
-    const users = await storage.getAllUsers();
-    res.json(users);
+    const usersList = await storage.getAllUsers();
+    res.json(usersList);
   });
 
   // === VOICE CALL SIGNALING (ENHANCED) ===
