@@ -204,7 +204,9 @@ export async function registerRoutes(
       senderId: req.session.userId!,
       recipientId: input.recipientId,
       groupId: input.groupId,
-      content: input.content
+      content: input.content,
+      mediaUrl: (input as any).mediaUrl,
+      mediaType: (input as any).mediaType
     });
     res.status(201).json(message);
   });

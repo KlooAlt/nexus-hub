@@ -190,16 +190,38 @@ export default function Chat() {
     }
   }, [messages, currentUser?.id, userSettings?.muteNotifications]);
 
-  const handleSend = (e: React.FormEvent) => {
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
+  const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!content.trim()) return;
+    if (!content.trim() && !selectedFile) return;
+
+    let mediaUrl = null;
+    let mediaType = null;
+
+    if (selectedFile) {
+      // Mock upload for now - in production this would go to S3/Replit Storage
+      // For MVP we'll use a data URL if small, but ideally we'd have a real upload
+      const reader = new FileReader();
+      const filePromise = new Promise((resolve) => {
+        reader.onloadend = () => resolve(reader.result);
+      });
+      reader.readAsDataURL(selectedFile);
+      mediaUrl = await filePromise;
+      mediaType = selectedFile.type.startsWith('image/') ? 'image' : 
+                  selectedFile.type.startsWith('video/') ? 'video' : 
+                  selectedFile.type.startsWith('audio/') ? 'audio' : null;
+    }
 
     sendMessage.mutate({ 
-      content, 
+      content: content || (selectedFile ? `Shared ${mediaType}` : ""), 
       recipientId: selectedRecipientId || undefined,
-      groupId: selectedGroupId || undefined
+      groupId: selectedGroupId || undefined,
+      mediaUrl,
+      mediaType
     } as any);
     setContent("");
+    setSelectedFile(null);
   };
 
   const displayedMessages = messages?.filter(msg => {
@@ -209,7 +231,7 @@ export default function Chat() {
       (msg.senderId === currentUser?.id && msg.recipientId === selectedRecipientId) ||
       (msg.senderId === selectedRecipientId && msg.recipientId === currentUser?.id)
     );
-  });
+  }).sort((a, b) => new Date(a.createdAt!).getTime() - new Date(b.createdAt!).getTime());
 
   return (
     <Layout>
@@ -316,6 +338,13 @@ export default function Chat() {
                   </div>
                   <div className={cn("px-4 py-2 text-sm font-mono border", isMe ? "bg-primary/10 border-primary/50" : "bg-accent/10 border-accent/50")}>
                     {msg.content}
+                    {msg.mediaUrl && (
+                      <div className="mt-2 border-t border-white/10 pt-2">
+                        {msg.mediaType === 'image' && <img src={msg.mediaUrl} alt="uploaded" className="max-w-full rounded border border-primary/20" />}
+                        {msg.mediaType === 'video' && <video src={msg.mediaUrl} controls className="max-w-full rounded border border-primary/20" />}
+                        {msg.mediaType === 'audio' && <audio src={msg.mediaUrl} controls className="w-full" />}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -324,65 +353,104 @@ export default function Chat() {
           </div>
 
           <div className="p-4 bg-black/50 border-t border-primary/20">
-            <form onSubmit={handleSend} className="flex gap-2">
-              <CyberInput value={content} onChange={(e) => setContent(e.target.value)} placeholder="INPUT_SIGNAL..." />
-              <CyberButton type="submit" disabled={!content.trim()}>TRANSMIT</CyberButton>
+            <form onSubmit={handleSend} className="flex flex-col gap-2">
+              <div className="flex gap-2">
+                <input
+                  type="file"
+                  id="file-upload"
+                  className="hidden"
+                  onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                  accept="image/*,video/*,audio/*"
+                />
+                <CyberButton 
+                  type="button" 
+                  onClick={() => document.getElementById('file-upload')?.click()}
+                  className={cn("px-3", selectedFile && "text-accent border-accent")}
+                >
+                  <Plus className="w-4 h-4" />
+                </CyberButton>
+                <div className="flex gap-1">
+                  <CyberInput 
+                    value={content} 
+                    onChange={(e) => setContent(e.target.value)} 
+                    placeholder="INPUT_SIGNAL..." 
+                    className="flex-1"
+                  />
+                  <CyberButton type="submit" disabled={!content.trim() && !selectedFile}>TRANSMIT</CyberButton>
+                </div>
+              </div>
+              {selectedFile && (
+                <div className="text-[10px] text-accent font-mono">
+                  ATTACHED: {selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)}KB)
+                  <button onClick={() => setSelectedFile(null)} className="ml-2 text-red-500 underline">CANCEL</button>
+                </div>
+              )}
             </form>
           </div>
         </div>
       </div>
       <audio ref={remoteAudio} autoPlay />
       {isCalling && (
-        <div className="fixed bottom-8 right-8 cyber-box p-6 bg-black/90 border-primary shadow-[0_0_20px_rgba(0,255,0,0.2)] z-50 min-w-[300px]">
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse" />
-                <span className="font-display text-sm tracking-widest text-glow">VOICE_LINK_ESTABLISHED</span>
+        <div className="fixed inset-0 bg-black/95 z-50 flex flex-col items-center justify-center p-8 backdrop-blur-xl">
+          <div className="max-w-4xl w-full cyber-box border-primary/40 bg-primary/5 p-12 flex flex-col gap-8 shadow-[0_0_50px_rgba(0,255,0,0.1)]">
+            <div className="flex items-center justify-between border-b border-primary/20 pb-6">
+              <div className="flex items-center gap-4">
+                <div className="w-4 h-4 rounded-full bg-green-500 animate-pulse shadow-[0_0_15px_#00ff00]" />
+                <h2 className="font-display text-2xl tracking-[0.2em] text-glow uppercase">Secure_Voice_Session</h2>
               </div>
-              <div className="text-[10px] opacity-50 uppercase">Secured_Line</div>
+              <div className="font-mono text-sm text-primary opacity-50">ENCRYPTION: AES-256-TERMINAL</div>
             </div>
 
-            <div className="grid grid-cols-4 gap-2">
+            <div className="flex-1 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+              <div className="flex flex-col items-center gap-3 p-4 border border-primary/20 bg-primary/5 rounded">
+                <div className="w-16 h-16 rounded-full bg-primary/20 border border-primary/40 flex items-center justify-center">
+                  <Users className="w-8 h-8 text-primary" />
+                </div>
+                <span className="font-mono text-xs text-primary">YOU (LOCAL)</span>
+                <div className="text-[10px] text-green-500 uppercase tracking-tighter">Connected</div>
+              </div>
+              {participants.map(p => (
+                <div key={p} className="flex flex-col items-center gap-3 p-4 border border-primary/20 bg-primary/5 rounded animate-in fade-in">
+                  <div className="w-16 h-16 rounded-full bg-accent/20 border border-accent/40 flex items-center justify-center">
+                    <Users className="w-8 h-8 text-accent" />
+                  </div>
+                  <span className="font-mono text-xs text-accent">OPERATIVE_{p}</span>
+                  <div className="text-[10px] text-accent uppercase tracking-tighter">In_Session</div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-center items-center gap-6 pt-8 border-t border-primary/20">
               <CyberButton 
                 variant={isMuted ? "destructive" : "secondary"} 
                 onClick={toggleMute}
-                className="h-12"
+                className="w-16 h-16 rounded-full"
               >
-                {isMuted ? <Volume2 className="w-4 h-4 opacity-50" /> : <Volume2 className="w-4 h-4" />}
+                <Volume2 className={cn("w-6 h-6", isMuted && "opacity-50")} />
               </CyberButton>
-              <CyberButton 
-                variant={isScreenSharing ? "primary" : "secondary"} 
-                onClick={toggleScreenShare}
-                className="h-12 opacity-50 cursor-not-allowed"
-                disabled
-              >
-                <Monitor className="w-4 h-4" />
-              </CyberButton>
+              
               <CyberButton 
                 variant="secondary" 
-                onClick={() => playSound('https://www.myinstants.com/media/sounds/discord-notification.mp3')}
-                className="h-12"
+                onClick={() => {
+                  const msg = "[SYSTEM] VOICE_CALL_PING";
+                  sendMessage.mutate({
+                    content: msg,
+                    groupId: selectedGroupId || undefined,
+                    recipientId: selectedRecipientId || undefined
+                  } as any);
+                }}
+                className="w-16 h-16 rounded-full"
               >
-                <Hash className="w-4 h-4" />
+                <MessageSquare className="w-6 h-6" />
               </CyberButton>
+
               <CyberButton 
                 variant="destructive" 
                 onClick={() => { pc.current?.close(); setIsCalling(false); }}
-                className="h-12"
+                className="w-24 h-16 px-8"
               >
-                OFF
+                DISCONNECT
               </CyberButton>
-            </div>
-
-            <div className="border-t border-primary/20 pt-2">
-              <div className="text-[10px] uppercase mb-2 opacity-50 font-bold">In_Session:</div>
-              <div className="flex flex-wrap gap-2">
-                <div className="text-[10px] px-2 py-1 border border-primary/30 bg-primary/5">USER_ME</div>
-                {participants.map(p => (
-                  <div key={p} className="text-[10px] px-2 py-1 border border-primary/30 bg-primary/5">NODE_{p}</div>
-                ))}
-              </div>
             </div>
           </div>
         </div>

@@ -55,13 +55,15 @@ export const groupChatMembers = pgTable("group_chat_members", {
   joinedAt: timestamp("joined_at").defaultNow(),
 });
 
-// Update messages to support GCs
+// Update messages to support GCs and media
 export const messages = pgTable("messages", {
   id: serial("id").primaryKey(),
   senderId: integer("sender_id").notNull().references(() => users.id),
   recipientId: integer("recipient_id").references(() => users.id),
-  groupId: integer("group_id").references(() => groupChats.id), // Added for GCs
+  groupId: integer("group_id").references(() => groupChats.id),
   content: text("content").notNull(),
+  mediaUrl: text("media_url"),
+  mediaType: text("media_type"), // 'image', 'video', 'audio'
   createdAt: timestamp("created_at").defaultNow(),
 });
 
