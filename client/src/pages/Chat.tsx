@@ -180,6 +180,11 @@ export default function Chat() {
     if (messages && messages.length > 0) {
       const lastMsg = messages[messages.length - 1];
       if (lastMsg.senderId !== currentUser?.id && !userSettings?.muteNotifications) {
+        if (userSettings?.ringtoneUrl) {
+          const audio = new Audio(userSettings.ringtoneUrl);
+          audio.play().catch(e => console.error("Ringtone failed:", e));
+        }
+
         if ("Notification" in window && Notification.permission === "granted") {
           new Notification(`NEW_SIGNAL: ${lastMsg.senderName}`, {
             body: lastMsg.content,
@@ -188,9 +193,40 @@ export default function Chat() {
         }
       }
     }
-  }, [messages, currentUser?.id, userSettings?.muteNotifications]);
+  }, [messages, currentUser?.id, userSettings?.muteNotifications, userSettings?.ringtoneUrl]);
 
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const mediaRecorder = useRef<MediaRecorder | null>(null);
+  const audioChunks = useRef<Blob[]>([]);
+
+  const startRecording = async () => {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder.current = new MediaRecorder(stream);
+    audioChunks.current = [];
+    mediaRecorder.current.ondataavailable = (e) => audioChunks.current.push(e.data);
+    mediaRecorder.current.onstop = async () => {
+      const audioBlob = new Blob(audioChunks.current, { type: 'audio/webm' });
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        sendMessage.mutate({
+          content: "Audio Message",
+          recipientId: selectedRecipientId || undefined,
+          groupId: selectedGroupId || undefined,
+          mediaUrl: reader.result as string,
+          mediaType: 'audio'
+        } as any);
+      };
+      reader.readAsDataURL(audioBlob);
+      stream.getTracks().forEach(t => t.stop());
+    };
+    mediaRecorder.current.start();
+    setIsRecording(true);
+  };
+
+  const stopRecording = () => {
+    mediaRecorder.current?.stop();
+    setIsRecording(false);
+  };
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -200,8 +236,6 @@ export default function Chat() {
     let mediaType = null;
 
     if (selectedFile) {
-      // Mock upload for now - in production this would go to S3/Replit Storage
-      // For MVP we'll use a data URL if small, but ideally we'd have a real upload
       const reader = new FileReader();
       const filePromise = new Promise((resolve) => {
         reader.onloadend = () => resolve(reader.result);
@@ -339,8 +373,8 @@ export default function Chat() {
                   <div className={cn("px-4 py-2 text-sm font-mono border", isMe ? "bg-primary/10 border-primary/50" : "bg-accent/10 border-accent/50")}>
                     {msg.content}
                     {msg.mediaUrl && (
-                      <div className="mt-2 border-t border-white/10 pt-2">
-                        {msg.mediaType === 'image' && <img src={msg.mediaUrl} alt="uploaded" className="max-w-full rounded border border-primary/20" />}
+                      <div className="mt-2 border-t border-white/10 pt-2 min-h-[100px] flex items-center justify-center bg-black/20">
+                        {msg.mediaType === 'image' && <img src={msg.mediaUrl} alt="uploaded" className="max-w-full rounded border border-primary/20 block" style={{ display: 'block' }} />}
                         {msg.mediaType === 'video' && <video src={msg.mediaUrl} controls className="max-w-full rounded border border-primary/20" />}
                         {msg.mediaType === 'audio' && <audio src={msg.mediaUrl} controls className="w-full" />}
                       </div>
@@ -368,6 +402,15 @@ export default function Chat() {
                   className={cn("px-3", selectedFile && "text-accent border-accent")}
                 >
                   <Plus className="w-4 h-4" />
+                </CyberButton>
+                <CyberButton
+                  type="button"
+                  onMouseDown={startRecording}
+                  onMouseUp={stopRecording}
+                  onMouseLeave={stopRecording}
+                  className={cn("px-3", isRecording && "bg-red-500/50 animate-pulse")}
+                >
+                  <Volume2 className="w-4 h-4" />
                 </CyberButton>
                 <div className="flex gap-1">
                   <CyberInput 
