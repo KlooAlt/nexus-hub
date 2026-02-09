@@ -195,6 +195,7 @@ export default function Chat() {
     }
   }, [messages, currentUser?.id, userSettings?.muteNotifications, userSettings?.ringtoneUrl]);
 
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const audioChunks = useRef<Blob[]>([]);
