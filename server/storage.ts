@@ -27,7 +27,7 @@ export interface IStorage {
   // Chat
   getMessages(currentUserId: number, recipientId?: number, groupId?: number): Promise<(Message & { senderName: string })[]>;
   getPublicMessages(): Promise<(Message & { senderName: string })[]>;
-  createMessage(msg: { senderId: number; recipientId?: number | null; groupId?: number | null; content: string; mediaUrl?: string | null; mediaType?: string | null; replyToId?: number | null }): Promise<Message>;
+  createMessage(msg: { senderId: number; recipientId?: number | null; groupId?: number | null; content: string }): Promise<Message>;
   getAllUsers(): Promise<User[]>;
 
   // Groups
@@ -105,10 +105,6 @@ export class DatabaseStorage implements IStorage {
         groupId: messages.groupId,
         content: messages.content,
         createdAt: messages.createdAt,
-        mediaUrl: messages.mediaUrl,
-        mediaType: messages.mediaType,
-        replyToId: messages.replyToId,
-        isDeleted: messages.isDeleted,
         senderName: users.username,
       })
       .from(messages)
@@ -125,10 +121,6 @@ export class DatabaseStorage implements IStorage {
         groupId: messages.groupId,
         content: messages.content,
         createdAt: messages.createdAt,
-        mediaUrl: messages.mediaUrl,
-        mediaType: messages.mediaType,
-        replyToId: messages.replyToId,
-        isDeleted: messages.isDeleted,
         senderName: users.username,
       })
       .from(messages)
@@ -156,10 +148,6 @@ export class DatabaseStorage implements IStorage {
       groupId: messages.groupId,
       content: messages.content,
       createdAt: messages.createdAt,
-      mediaUrl: messages.mediaUrl,
-      mediaType: messages.mediaType,
-      replyToId: messages.replyToId,
-      isDeleted: messages.isDeleted,
       senderName: users.username,
     })
     .from(messages)
@@ -168,7 +156,7 @@ export class DatabaseStorage implements IStorage {
     .orderBy(messages.createdAt);
   }
 
-  async createMessage(msg: { senderId: number; recipientId?: number | null; groupId?: number | null; content: string; mediaUrl?: string | null; mediaType?: string | null; replyToId?: number | null }): Promise<Message> {
+  async createMessage(msg: { senderId: number; recipientId?: number | null; groupId?: number | null; content: string; mediaUrl?: string | null; mediaType?: string | null }): Promise<Message> {
     const [message] = await db.insert(messages).values(msg).returning();
     return message;
   }
@@ -186,11 +174,11 @@ export class DatabaseStorage implements IStorage {
       userId: data.ownerId
     });
     
-    // Create system message
+    // Create system message with invite code
     await this.createMessage({
       senderId: data.ownerId,
       groupId: group.id,
-      content: `[SYSTEM] Group Chat initialized.`
+      content: `[SYSTEM] Group Chat initialized. SECURE_INVITE_CODE: ${data.inviteCode}`
     });
     
     return group;
