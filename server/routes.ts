@@ -206,10 +206,54 @@ export async function registerRoutes(
       groupId: input.groupId,
       content: input.content,
       mediaUrl: (input as any).mediaUrl,
-      mediaType: (input as any).mediaType
+      mediaType: (input as any).mediaType,
+      replyToId: (input as any).replyToId
     });
     res.status(201).json(message);
   });
+
+  app.delete("/api/chat/messages/:id", requireAuth, async (req, res) => {
+    const messageId = Number(req.params.id);
+    const message = await db.select().from(messages).where(eq(messages.id, messageId)).limit(1);
+    
+    if (message.length === 0) return res.status(404).json({ message: "Message not found" });
+    if (message[0].senderId !== req.session.userId && req.session.role !== "owner") {
+      return res.status(403).json({ message: "Unauthorized" });
+    }
+
+    await db.update(messages).set({ isDeleted: true }).where(eq(messages.id, messageId));
+    res.status(204).send();
+  });
+
+  app.post("/api/upload", requireAuth, async (req, res) => {
+    try {
+      const { fileName, fileData, fileType } = req.body;
+      if (!fileData || !fileName) return res.status(400).json({ message: "Invalid file data" });
+      
+      const buffer = Buffer.from(fileData.split(',')[1], 'base64');
+      const uploadDir = path.join(process.cwd(), 'uploads');
+      const fs = await import('fs/promises');
+      
+      try {
+        await fs.access(uploadDir);
+      } catch {
+        await fs.mkdir(uploadDir, { recursive: true });
+      }
+
+      const safeFileName = `${Date.now()}-${fileName.replace(/[^a-z0-9.]/gi, '_')}`;
+      const filePath = path.join(uploadDir, safeFileName);
+      await fs.writeFile(filePath, buffer);
+      
+      res.json({ url: `/uploads/${safeFileName}` });
+    } catch (err) {
+      console.error("Upload error:", err);
+      res.status(500).json({ message: "Upload failed" });
+    }
+  });
+
+  const path = await import('path');
+  const express = await import('express');
+  app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
   app.post(api.chat.createGroup.path, requireAuth, async (req, res) => {
     const { name } = api.chat.createGroup.input.parse(req.body);

@@ -6,7 +6,7 @@ import { CyberCard } from "@/components/CyberCard";
 import { useChat } from "@/hooks/use-chat";
 import { useAuth } from "@/hooks/use-auth";
 import { format } from "date-fns";
-import { Send, Users, Hash, Lock, Phone, Plus, MessageSquare, Volume2, Monitor } from "lucide-react";
+import { Send, Users, Hash, Lock, Phone, Plus, MessageSquare, Volume2, Monitor, Reply, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
@@ -14,7 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 
 export default function Chat() {
   const { user: currentUser } = useAuth();
-  const { messages, users, sendMessage } = useChat();
+  const { messages: rawMessages, users, sendMessage } = useChat();
   const { toast } = useToast();
   const [content, setContent] = useState("");
   const [selectedRecipientId, setSelectedRecipientId] = useState<number | null>(null);
@@ -195,33 +195,50 @@ export default function Chat() {
     }
   }, [messages, currentUser?.id, userSettings?.muteNotifications, userSettings?.ringtoneUrl]);
 
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [isRecording, setIsRecording] = useState(false);
-  const mediaRecorder = useRef<MediaRecorder | null>(null);
-  const audioChunks = useRef<Blob[]>([]);
+  const [replyingTo, setReplyingTo] = useState<any>(null);
 
   const startRecording = async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaRecorder.current = new MediaRecorder(stream);
-    audioChunks.current = [];
-    mediaRecorder.current.ondataavailable = (e) => audioChunks.current.push(e.data);
-    mediaRecorder.current.onstop = async () => {
-      const audioBlob = new Blob(audioChunks.current, { type: 'audio/webm' });
-      const reader = new FileReader();
-      reader.onloadend = () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder.current = new MediaRecorder(stream);
+      audioChunks.current = [];
+      mediaRecorder.current.ondataavailable = (e) => audioChunks.current.push(e.data);
+      mediaRecorder.current.onstop = async () => {
+        const audioBlob = new Blob(audioChunks.current, { type: 'audio/webm' });
+        const reader = new FileReader();
+        const base64Promise = new Promise<string>((resolve) => {
+          reader.onloadend = () => resolve(reader.result as string);
+        });
+        reader.readAsDataURL(audioBlob);
+        const base64Data = await base64Promise;
+
+        const res = await fetch("/api/upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fileName: `audio-${Date.now()}.webm`,
+            fileData: base64Data,
+            fileType: 'audio/webm'
+          })
+        });
+        const data = await res.json();
+
         sendMessage.mutate({
           content: "Audio Message",
           recipientId: selectedRecipientId || undefined,
           groupId: selectedGroupId || undefined,
-          mediaUrl: reader.result as string,
-          mediaType: 'audio'
+          mediaUrl: data.url,
+          mediaType: 'audio',
+          replyToId: replyingTo?.id
         } as any);
+        
+        stream.getTracks().forEach(t => t.stop());
       };
-      reader.readAsDataURL(audioBlob);
-      stream.getTracks().forEach(t => t.stop());
-    };
-    mediaRecorder.current.start();
-    setIsRecording(true);
+      mediaRecorder.current.start();
+      setIsRecording(true);
+    } catch (err) {
+      toast({ title: "MIC_ERROR", description: "Could not access microphone." });
+    }
   };
 
   const stopRecording = () => {
@@ -238,11 +255,23 @@ export default function Chat() {
 
     if (selectedFile) {
       const reader = new FileReader();
-      const filePromise = new Promise((resolve) => {
-        reader.onloadend = () => resolve(reader.result);
+      const base64Promise = new Promise<string>((resolve) => {
+        reader.onloadend = () => resolve(reader.result as string);
       });
       reader.readAsDataURL(selectedFile);
-      mediaUrl = await filePromise;
+      const base64Data = await base64Promise;
+
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileName: selectedFile.name,
+          fileData: base64Data,
+          fileType: selectedFile.type
+        })
+      });
+      const data = await res.json();
+      mediaUrl = data.url;
       mediaType = selectedFile.type.startsWith('image/') ? 'image' : 
                   selectedFile.type.startsWith('video/') ? 'video' : 
                   selectedFile.type.startsWith('audio/') ? 'audio' : null;
@@ -253,13 +282,30 @@ export default function Chat() {
       recipientId: selectedRecipientId || undefined,
       groupId: selectedGroupId || undefined,
       mediaUrl,
-      mediaType
+      mediaType,
+      replyToId: replyingTo?.id
     } as any);
     setContent("");
     setSelectedFile(null);
+    setReplyingTo(null);
   };
 
+  const deleteMessage = useMutation({
+    mutationFn: async (id: number) => {
+      await fetch(`/api/chat/messages/${id}`, { method: 'DELETE' });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.chat.list.path] });
+    }
+  });
+
+  const messages = rawMessages?.map(msg => ({
+    ...msg,
+    replyTo: rawMessages.find(m => m.id === msg.replyToId)
+  }));
+
   const displayedMessages = messages?.filter(msg => {
+    if (msg.isDeleted) return false;
     if (selectedGroupId) return msg.groupId === selectedGroupId;
     if (selectedRecipientId === null) return !msg.recipientId && !msg.groupId;
     return (
@@ -272,92 +318,125 @@ export default function Chat() {
     <Layout>
       <div className="flex flex-col md:flex-row gap-6 h-full">
         <div className="w-full md:w-64 flex flex-col gap-4">
-          <div className="cyber-box flex-1 flex flex-col p-0 overflow-hidden min-h-[200px]">
-            <div className="p-4 border-b border-primary/20 bg-primary/5 flex items-center justify-between">
-              <h3 className="font-display tracking-widest text-sm text-glow">COMM_LINKS</h3>
+          <CyberCard className="p-4 flex flex-col gap-4 bg-black/40 border-primary/20">
+            <div className="flex items-center gap-2 mb-2">
               <Users className="w-4 h-4 text-primary" />
+              <h3 className="font-display text-xs tracking-widest uppercase text-glow">Operatives</h3>
             </div>
-            
-            <div className="p-2 space-y-1 overflow-y-auto flex-1">
+            <div className="space-y-1 max-h-48 overflow-y-auto custom-scrollbar">
               <button
                 onClick={() => { setSelectedRecipientId(null); setSelectedGroupId(null); }}
                 className={cn(
-                  "w-full text-left px-3 py-2 text-xs font-mono uppercase transition-colors flex items-center gap-2 border border-transparent",
-                  selectedRecipientId === null && selectedGroupId === null
-                    ? "bg-primary/20 text-primary border-primary/50" 
-                    : "text-muted-foreground hover:bg-white/5 hover:text-white"
+                  "w-full flex items-center gap-3 p-2 rounded transition-all border border-transparent",
+                  !selectedRecipientId && !selectedGroupId ? "bg-primary/20 border-primary/40 text-primary shadow-[0_0_10px_rgba(0,255,0,0.2)]" : "hover:bg-primary/10 text-primary/60"
                 )}
               >
-                <Hash className="w-3 h-3" />
-                BROADCAST_HUB
+                <div className="p-1.5 rounded bg-primary/10">
+                  <Hash className="w-3.5 h-3.5" />
+                </div>
+                <span className="font-mono text-[10px] tracking-tighter uppercase">Broadcast_Hub</span>
               </button>
-
-              <div className="my-2 px-3 text-[10px] text-muted-foreground uppercase font-bold tracking-wider mt-4 opacity-50">Private_Channels</div>
-              <div className="px-2 space-y-2 mb-2">
-                <div className="flex gap-1">
-                  <CyberInput value={groupName} onChange={e => setGroupName(e.target.value)} placeholder="NEW_GC_NAME" className="h-7 text-[10px]" />
-                  <CyberButton onClick={() => createGroup.mutate(groupName)} className="h-7 px-2 text-[10px] whitespace-nowrap">INIT</CyberButton>
-                </div>
-                <div className="flex gap-1">
-                  <CyberInput value={inviteCode} onChange={e => setInviteCode(e.target.value)} placeholder="GC_INVITE_CODE" className="h-7 text-[10px]" />
-                  <CyberButton onClick={() => joinGroup.mutate(inviteCode)} className="h-7 px-2 text-[10px] whitespace-nowrap">JOIN</CyberButton>
-                </div>
-              </div>
-
-              {Array.isArray(groups) && groups.map((g: any) => (
+              {users?.filter(u => u.id !== currentUser?.id).map(user => (
                 <button
-                  key={g.id}
-                  onClick={() => { setSelectedGroupId(g.id); setSelectedRecipientId(null); }}
+                  key={user.id}
+                  onClick={() => { setSelectedRecipientId(user.id); setSelectedGroupId(null); }}
                   className={cn(
-                    "w-full text-left px-3 py-2 text-xs font-mono uppercase transition-colors flex items-center gap-2 border border-transparent",
-                    selectedGroupId === g.id 
-                      ? "bg-primary/20 text-primary border-primary/50 shadow-[0_0_10px_rgba(0,255,0,0.1)]" 
-                      : "text-muted-foreground hover:bg-white/5 hover:text-white"
+                    "w-full flex items-center gap-3 p-2 rounded transition-all border border-transparent",
+                    selectedRecipientId === user.id ? "bg-accent/20 border-accent/40 text-accent shadow-[0_0_10px_rgba(255,0,255,0.2)]" : "hover:bg-accent/10 text-accent/60"
                   )}
                 >
-                  <Hash className="w-3 h-3" />
-                  {g.name}
+                  <div className="p-1.5 rounded bg-accent/10">
+                    <Lock className="w-3.5 h-3.5" />
+                  </div>
+                  <span className="font-mono text-[10px] tracking-tighter uppercase truncate">{user.username}</span>
                 </button>
               ))}
+            </div>
+          </CyberCard>
 
-              <div className="my-2 px-3 text-[10px] text-muted-foreground uppercase font-bold tracking-wider mt-4">SECURE_NODES</div>
-              {users?.filter(u => u.id !== currentUser?.id).map(user => (
-                <div key={user.id} className="flex gap-1">
-                  <button
-                    onClick={() => { setSelectedRecipientId(user.id); setSelectedGroupId(null); }}
-                    className={cn(
-                      "flex-1 text-left px-3 py-2 text-xs font-mono uppercase transition-colors flex items-center gap-2 border border-transparent",
-                      selectedRecipientId === user.id 
-                        ? "bg-accent/20 text-accent border-accent/50" 
-                        : "text-muted-foreground hover:bg-white/5 hover:text-white"
-                    )}
-                  >
-                    <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_5px_currentColor]" />
-                    {user.username}
-                  </button>
-                  <button onClick={() => startCall(user.id)} className="p-2 border border-primary/20 hover:bg-primary/10 transition-colors">
-                    <Phone className="w-3 h-3 text-primary" />
-                  </button>
-                </div>
+          <CyberCard className="p-4 flex flex-col gap-4 bg-black/40 border-primary/20">
+            <div className="flex items-center gap-2 mb-2">
+              <Hash className="w-4 h-4 text-primary" />
+              <h3 className="font-display text-xs tracking-widest uppercase text-glow">Private GCs</h3>
+            </div>
+            <div className="space-y-1 max-h-48 overflow-y-auto custom-scrollbar">
+              {groups.map((group: any) => (
+                <button
+                  key={group.id}
+                  onClick={() => { setSelectedGroupId(group.id); setSelectedRecipientId(null); }}
+                  className={cn(
+                    "w-full flex items-center gap-3 p-2 rounded transition-all border border-transparent",
+                    selectedGroupId === group.id ? "bg-primary/20 border-primary/40 text-primary shadow-[0_0_10px_rgba(0,255,0,0.2)]" : "hover:bg-primary/10 text-primary/60"
+                  )}
+                >
+                  <div className="p-1.5 rounded bg-primary/10">
+                    <Hash className="w-3.5 h-3.5" />
+                  </div>
+                  <span className="font-mono text-[10px] tracking-tighter uppercase truncate">{group.name}</span>
+                </button>
               ))}
             </div>
-          </div>
+            <div className="flex flex-col gap-2 mt-2 pt-4 border-t border-primary/10">
+              <div className="flex gap-2">
+                <CyberInput 
+                  placeholder="NEW_GC_NAME" 
+                  value={groupName} 
+                  onChange={e => setGroupName(e.target.value)}
+                  className="h-8 text-[10px]"
+                />
+                <CyberButton 
+                  size="icon" 
+                  className="h-8 w-8" 
+                  onClick={() => groupName && createGroup.mutate(groupName)}
+                  disabled={createGroup.isPending}
+                >
+                  <Plus className="w-4 h-4" />
+                </CyberButton>
+              </div>
+              <div className="flex gap-2">
+                <CyberInput 
+                  placeholder="INVITE_CODE" 
+                  value={inviteCode} 
+                  onChange={e => setInviteCode(e.target.value)}
+                  className="h-8 text-[10px]"
+                />
+                <CyberButton 
+                  size="icon" 
+                  className="h-8 w-8" 
+                  onClick={() => inviteCode && joinGroup.mutate(inviteCode)}
+                  disabled={joinGroup.isPending}
+                >
+                  <Plus className="w-4 h-4 text-accent" />
+                </CyberButton>
+              </div>
+            </div>
+          </CyberCard>
         </div>
 
         <div className="flex-1 cyber-box p-0 flex flex-col overflow-hidden">
           <div className="p-4 border-b border-primary/20 bg-black/50 backdrop-blur flex items-center justify-between z-10">
-            <div className="flex items-center gap-2">
-              <Hash className="w-4 h-4 text-primary" />
-              <span className="font-display tracking-widest text-glow uppercase">
-                {selectedGroupId ? (Array.isArray(groups) ? groups : []).find((g: any) => g.id === selectedGroupId)?.name : 
-                 selectedRecipientId ? users?.find(u => u.id === selectedRecipientId)?.username : 
-                 "BROADCAST_HUB"}
-              </span>
+            <div className="flex items-center gap-3">
+              <div className="p-2 cyber-box border-primary/40 bg-primary/10">
+                {selectedGroupId ? <Hash className="w-5 h-5 text-primary" /> : selectedRecipientId ? <Lock className="w-5 h-5 text-accent" /> : <Users className="w-5 h-5 text-primary" />}
+              </div>
+              <div>
+                <h2 className="font-display text-sm tracking-widest text-glow">
+                  {selectedGroupId ? groups.find((g: any) => g.id === selectedGroupId)?.name : 
+                   selectedRecipientId ? users?.find((u: any) => u.id === selectedRecipientId)?.username : 
+                   "BROADCAST_HUB"}
+                </h2>
+                <div className="flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                  <span className="text-[10px] text-primary/60 font-mono">
+                    {selectedGroupId ? `SECURE_GC_PROTOCOL - INVITE: ${groups.find((g: any) => g.id === selectedGroupId)?.inviteCode}` : "ENCRYPTED_CHANNEL"}
+                  </span>
+                </div>
+              </div>
             </div>
-            {selectedGroupId && (
-              <CyberButton onClick={() => startCall(selectedGroupId)} className="h-8">
-                <Phone className="w-3 h-3 mr-2" />
-                JOIN_VOICE
+            {selectedRecipientId && (
+              <CyberButton variant="secondary" onClick={() => startCall(selectedRecipientId)} className="h-8 px-4">
+                <Phone className="w-4 h-4 mr-2" />
+                INITIATE_VOICE
               </CyberButton>
             )}
           </div>
@@ -366,16 +445,31 @@ export default function Chat() {
             {displayedMessages?.map((msg) => {
               const isMe = msg.senderId === currentUser?.id;
               return (
-                <div key={msg.id} className={cn("flex flex-col max-w-[80%]", isMe ? "ml-auto items-end" : "mr-auto items-start")}>
+                <div key={msg.id} className={cn("flex flex-col max-w-[80%] group", isMe ? "ml-auto items-end" : "mr-auto items-start")}>
+                  {msg.replyTo && (
+                    <div className="text-[8px] text-muted-foreground mb-1 border-l-2 border-primary/20 pl-2 opacity-60">
+                      Replying to: {msg.replyTo.content.substring(0, 20)}...
+                    </div>
+                  )}
                   <div className="flex items-center gap-2 mb-1">
-                    <span className={cn("text-[10px] font-bold", isMe ? "text-primary" : "text-accent")}>{isMe ? 'YOU' : msg.senderName}</span>
+                    <span className={cn("text-[10px] font-bold uppercase", isMe ? "text-primary" : "text-accent")}>{isMe ? 'YOU' : msg.senderName}</span>
                     <span className="text-[10px] text-muted-foreground">{format(new Date(msg.createdAt || Date.now()), "HH:mm")}</span>
+                    <div className="hidden group-hover:flex items-center gap-1 ml-2">
+                      <button onClick={() => setReplyingTo(msg)} className="text-muted-foreground hover:text-primary transition-colors">
+                        <Reply className="w-3 h-3" />
+                      </button>
+                      {(isMe || currentUser?.role === 'owner') && (
+                        <button onClick={() => deleteMessage.mutate(msg.id)} className="text-muted-foreground hover:text-destructive transition-colors">
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <div className={cn("px-4 py-2 text-sm font-mono border", isMe ? "bg-primary/10 border-primary/50" : "bg-accent/10 border-accent/50")}>
+                  <div className={cn("px-4 py-2 text-sm font-mono border relative", isMe ? "bg-primary/10 border-primary/50" : "bg-accent/10 border-accent/50")}>
                     {msg.content}
                     {msg.mediaUrl && (
-                      <div className="mt-2 border-t border-white/10 pt-2 min-h-[100px] flex items-center justify-center bg-black/20">
-                        {msg.mediaType === 'image' && <img src={msg.mediaUrl} alt="uploaded" className="max-w-full rounded border border-primary/20 block" style={{ display: 'block' }} />}
+                      <div className="mt-2 border-t border-white/10 pt-2 min-h-[100px] flex items-center justify-center bg-black/20 overflow-hidden">
+                        {msg.mediaType === 'image' && <img src={msg.mediaUrl} alt="uploaded" className="max-w-full rounded border border-primary/20 block cursor-pointer" onClick={() => window.open(msg.mediaUrl!, '_blank')} />}
                         {msg.mediaType === 'video' && <video src={msg.mediaUrl} controls className="max-w-full rounded border border-primary/20" />}
                         {msg.mediaType === 'audio' && <audio src={msg.mediaUrl} controls className="w-full" />}
                       </div>
@@ -388,8 +482,21 @@ export default function Chat() {
           </div>
 
           <div className="p-4 bg-black/50 border-t border-primary/20">
+            {replyingTo && (
+              <div className="text-[10px] text-primary mb-2 flex items-center justify-between bg-primary/5 p-2 border border-primary/20 rounded">
+                <span>REPLYING_TO: {replyingTo.senderName} - {replyingTo.content.substring(0, 30)}...</span>
+                <button onClick={() => setReplyingTo(null)} className="text-destructive hover:underline">CANCEL</button>
+              </div>
+            )}
             <form onSubmit={handleSend} className="flex flex-col gap-2">
               <div className="flex gap-2">
+                <CyberInput
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  placeholder={isRecording ? "RECORDING..." : "TYPE_MESSAGE..."}
+                  className="flex-1"
+                  disabled={isRecording}
+                />
                 <input
                   type="file"
                   id="file-upload"
@@ -397,42 +504,44 @@ export default function Chat() {
                   onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
                   accept="image/*,video/*,audio/*"
                 />
-                <CyberButton 
-                  type="button" 
+                <CyberButton
+                  type="button"
+                  variant="outline"
+                  size="icon"
                   onClick={() => document.getElementById('file-upload')?.click()}
-                  className={cn("px-3", selectedFile && "text-accent border-accent")}
+                  className={cn(selectedFile && "text-primary border-primary")}
                 >
                   <Plus className="w-4 h-4" />
                 </CyberButton>
                 <CyberButton
                   type="button"
+                  variant={isRecording ? "destructive" : "outline"}
+                  size="icon"
                   onMouseDown={startRecording}
                   onMouseUp={stopRecording}
-                  onMouseLeave={stopRecording}
-                  className={cn("px-3", isRecording && "bg-red-500/50 animate-pulse")}
+                  onTouchStart={startRecording}
+                  onTouchEnd={stopRecording}
                 >
                   <Volume2 className="w-4 h-4" />
                 </CyberButton>
-                <div className="flex gap-1">
-                  <CyberInput 
-                    value={content} 
-                    onChange={(e) => setContent(e.target.value)} 
-                    placeholder="INPUT_SIGNAL..." 
-                    className="flex-1"
-                  />
-                  <CyberButton type="submit" disabled={!content.trim() && !selectedFile}>TRANSMIT</CyberButton>
-                </div>
+                <CyberButton type="submit" disabled={sendMessage.isPending || (!content.trim() && !selectedFile)}>
+                  <Send className="w-4 h-4" />
+                </CyberButton>
               </div>
               {selectedFile && (
-                <div className="text-[10px] text-accent font-mono">
-                  ATTACHED: {selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)}KB)
-                  <button onClick={() => setSelectedFile(null)} className="ml-2 text-red-500 underline">CANCEL</button>
+                <div className="text-[10px] text-primary flex items-center justify-between bg-primary/5 p-1 border border-primary/10 rounded">
+                  <span className="truncate">ATTACHED: {selectedFile.name}</span>
+                  <button onClick={() => setSelectedFile(null)} className="text-destructive ml-2">REMOVE</button>
                 </div>
               )}
             </form>
           </div>
         </div>
       </div>
+      {/* ... calling UI ... */}
+    </Layout>
+  );
+}
       <audio ref={remoteAudio} autoPlay />
       {isCalling && (
         <div className="fixed inset-0 bg-black/95 z-50 flex flex-col items-center justify-center p-8 backdrop-blur-xl">
