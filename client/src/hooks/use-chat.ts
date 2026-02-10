@@ -1,43 +1,37 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type CreateMessageRequest } from "@shared/routes";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import type { MessageWithUser, User } from "@shared/schema";
 
 export function useChat() {
-  const queryClient = useQueryClient();
-
-  const { data: messages, isLoading: isLoadingMessages } = useQuery({
-    queryKey: [api.chat.list.path],
-    queryFn: async () => {
-      const res = await fetch(api.chat.list.path);
-      if (!res.ok) throw new Error("Failed to fetch messages");
-      return api.chat.list.responses[200].parse(await res.json());
-    },
-    refetchInterval: 3000, // Poll every 3 seconds for simple real-time feel
+  const { data: messages = [], ...messagesQuery } = useQuery<MessageWithUser[]>({
+    queryKey: ["/api/messages"],
+    refetchInterval: 3000,
   });
 
-  const { data: users, isLoading: isLoadingUsers } = useQuery({
-    queryKey: [api.chat.users.path],
-    queryFn: async () => {
-      const res = await fetch(api.chat.users.path);
-      if (!res.ok) throw new Error("Failed to fetch users");
-      return api.chat.users.responses[200].parse(await res.json());
-    },
-    refetchInterval: 10000,
+  const { data: users = [], ...usersQuery } = useQuery<User[]>({
+    queryKey: ["/api/chat/users"],
   });
 
   const sendMessage = useMutation({
-    mutationFn: async (data: CreateMessageRequest) => {
-      const res = await fetch(api.chat.send.path, {
-        method: api.chat.send.method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) throw new Error("Failed to send message");
-      return api.chat.send.responses[201].parse(await res.json());
+    mutationFn: async (data: {
+      content: string;
+      recipientId?: number;
+      groupId?: number;
+      mediaUrl?: string | null;
+      mediaType?: string | null;
+    }) => {
+      const res = await apiRequest("POST", "/api/messages", data);
+      return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.chat.list.path] });
+      queryClient.invalidateQueries({ queryKey: ["/api/messages"] });
     },
   });
 
-  return { messages, users, isLoadingMessages, isLoadingUsers, sendMessage };
+  return {
+    messages,
+    users,
+    sendMessage,
+    isLoading: messagesQuery.isLoading || usersQuery.isLoading,
+  };
 }
