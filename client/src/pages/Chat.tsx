@@ -538,10 +538,6 @@ export default function Chat() {
           </div>
         </div>
       </div>
-      {/* ... calling UI ... */}
-    </Layout>
-  );
-}
       <audio ref={remoteAudio} autoPlay />
       {isCalling && (
         <div className="fixed inset-0 bg-black/95 z-50 flex flex-col items-center justify-center p-8 backdrop-blur-xl">
