@@ -166,9 +166,17 @@ export default function Chat() {
     soundboardAudio.current.play().catch(() => {});
   };
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  useEffect(() => {
+    scrollToBottom();
+  }, [displayedMessages]);
+
+  useEffect(() => {
+    // Persistent Session Logic
+    const savedScroll = localStorage.getItem('chat_scroll_pos');
+    if (savedScroll) {
+      // Restore state if needed
+    }
+  }, []);
 
   useEffect(() => {
     if ("Notification" in window && Notification.permission !== "granted") {
@@ -197,31 +205,37 @@ export default function Chat() {
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [showScrollButton, setShowScrollButton] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number, y: number, msgId: number, isMe: boolean } | null>(null);
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const audioChunks = useRef<Blob[]>([]);
 
   const startRecording = async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaRecorder.current = new MediaRecorder(stream);
-    audioChunks.current = [];
-    mediaRecorder.current.ondataavailable = (e) => audioChunks.current.push(e.data);
-    mediaRecorder.current.onstop = async () => {
-      const audioBlob = new Blob(audioChunks.current, { type: 'audio/webm' });
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        sendMessage.mutate({
-          content: "Audio Message",
-          recipientId: selectedRecipientId || undefined,
-          groupId: selectedGroupId || undefined,
-          mediaUrl: reader.result as string,
-          mediaType: 'audio'
-        } as any);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder.current = new MediaRecorder(stream);
+      audioChunks.current = [];
+      mediaRecorder.current.ondataavailable = (e) => audioChunks.current.push(e.data);
+      mediaRecorder.current.onstop = async () => {
+        const audioBlob = new Blob(audioChunks.current, { type: 'audio/webm' });
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          sendMessage.mutate({
+            content: "Audio Message",
+            recipientId: selectedRecipientId || undefined,
+            groupId: selectedGroupId || undefined,
+            mediaUrl: reader.result as string,
+            mediaType: 'audio'
+          } as any);
+        };
+        reader.readAsDataURL(audioBlob);
+        stream.getTracks().forEach(t => t.stop());
       };
-      reader.readAsDataURL(audioBlob);
-      stream.getTracks().forEach(t => t.stop());
-    };
-    mediaRecorder.current.start();
-    setIsRecording(true);
+      mediaRecorder.current.start();
+      setIsRecording(true);
+    } catch (err) {
+      toast({ title: "ERROR", description: "Terminal audio access denied." });
+    }
   };
 
   const stopRecording = () => {
@@ -362,22 +376,47 @@ export default function Chat() {
             )}
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth custom-scrollbar" onScroll={(e) => {
+            const target = e.currentTarget;
+            const isAtBottom = Math.abs(target.scrollHeight - target.clientHeight - target.scrollTop) < 1;
+            setShowScrollButton(!isAtBottom);
+          }}>
             {displayedMessages?.map((msg) => {
               const isMe = msg.senderId === currentUser?.id;
               return (
-                <div key={msg.id} className={cn("flex flex-col max-w-[80%]", isMe ? "ml-auto items-end" : "mr-auto items-start")}>
+                <div 
+                  key={msg.id} 
+                  className={cn("flex flex-col max-w-[80%] group", isMe ? "ml-auto items-end" : "mr-auto items-start")}
+                  onDoubleClick={() => setContextMenu({ x: 0, y: 0, msgId: msg.id, isMe })}
+                >
                   <div className="flex items-center gap-2 mb-1">
                     <span className={cn("text-[10px] font-bold", isMe ? "text-primary" : "text-accent")}>{isMe ? 'YOU' : msg.senderName}</span>
                     <span className="text-[10px] text-muted-foreground">{format(new Date(msg.createdAt || Date.now()), "HH:mm")}</span>
                   </div>
-                  <div className={cn("px-4 py-2 text-sm font-mono border", isMe ? "bg-primary/10 border-primary/50" : "bg-accent/10 border-accent/50")}>
+                  <div className={cn("px-4 py-2 text-sm font-mono border relative", isMe ? "bg-primary/10 border-primary/50" : "bg-accent/10 border-accent/50")}>
                     {msg.content}
                     {msg.mediaUrl && (
                       <div className="mt-2 border-t border-white/10 pt-2 min-h-[100px] flex items-center justify-center bg-black/20">
                         {msg.mediaType === 'image' && <img src={msg.mediaUrl} alt="uploaded" className="max-w-full rounded border border-primary/20 block" style={{ display: 'block' }} />}
                         {msg.mediaType === 'video' && <video src={msg.mediaUrl} controls className="max-w-full rounded border border-primary/20" />}
-                        {msg.mediaType === 'audio' && <audio src={msg.mediaUrl} controls className="w-full" />}
+                        {msg.mediaType === 'audio' && (
+                          <div className="w-full space-y-2">
+                            <div className="flex items-center gap-2">
+                              <CyberButton size="icon" variant="ghost" onClick={(e) => {
+                                const audio = e.currentTarget.parentElement?.nextElementSibling as HTMLAudioElement;
+                                if (audio.paused) audio.play(); else audio.pause();
+                              }}>
+                                <Volume2 className="w-4 h-4" />
+                              </CyberButton>
+                              <div className="flex-1 h-8 bg-primary/10 rounded flex items-end gap-[1px] px-2 overflow-hidden">
+                                {[...Array(20)].map((_, i) => (
+                                  <div key={i} className="flex-1 bg-primary/40 animate-pulse" style={{ height: `${Math.random() * 100}%` }} />
+                                ))}
+                              </div>
+                            </div>
+                            <audio src={msg.mediaUrl} className="hidden" onPlay={(e) => e.currentTarget.previousElementSibling?.querySelector('.animate-pulse')?.classList.remove('paused')} />
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -387,49 +426,88 @@ export default function Chat() {
             <div ref={messagesEndRef} />
           </div>
 
+          {showScrollButton && (
+            <button 
+              onClick={scrollToBottom}
+              className="fixed bottom-24 right-8 z-20 p-2 rounded-full bg-primary/20 border border-primary/50 text-primary hover:bg-primary/30 transition-all animate-in fade-in slide-in-from-bottom-2"
+            >
+              <Send className="w-4 h-4 rotate-90" />
+            </button>
+          )}
+
+          {contextMenu && (
+            <div 
+              className="fixed inset-0 z-50" 
+              onClick={() => setContextMenu(null)}
+              onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }}
+            >
+              <div 
+                className="absolute bg-black/90 border border-primary/50 p-1 min-w-[120px] shadow-2xl animate-in zoom-in-95 duration-100"
+                style={{ top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}
+              >
+                <button className="w-full text-left px-3 py-2 text-[10px] font-mono hover:bg-primary/20 text-primary uppercase">Reply</button>
+                <button className="w-full text-left px-3 py-2 text-[10px] font-mono hover:bg-primary/20 text-primary uppercase">Forward</button>
+                {contextMenu.isMe && (
+                  <button className="w-full text-left px-3 py-2 text-[10px] font-mono hover:bg-red-500/20 text-red-500 uppercase border-t border-white/10 mt-1">Delete</button>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="p-4 bg-black/50 border-t border-primary/20">
-            <form onSubmit={handleSend} className="flex flex-col gap-2">
-              <div className="flex gap-2">
-                <input
-                  type="file"
-                  id="file-upload"
-                  className="hidden"
-                  onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-                  accept="image/*,video/*,audio/*"
-                />
-                <CyberButton 
-                  type="button" 
-                  onClick={() => document.getElementById('file-upload')?.click()}
-                  className={cn("px-3", selectedFile && "text-accent border-accent")}
-                >
-                  <Plus className="w-4 h-4" />
-                </CyberButton>
-                <CyberButton
-                  type="button"
-                  onMouseDown={startRecording}
-                  onMouseUp={stopRecording}
-                  onMouseLeave={stopRecording}
-                  className={cn("px-3", isRecording && "bg-red-500/50 animate-pulse")}
-                >
-                  <Volume2 className="w-4 h-4" />
-                </CyberButton>
-                <div className="flex gap-1">
-                  <CyberInput 
-                    value={content} 
-                    onChange={(e) => setContent(e.target.value)} 
-                    placeholder="INPUT_SIGNAL..." 
-                    className="flex-1"
-                  />
-                  <CyberButton type="submit" disabled={!content.trim() && !selectedFile}>TRANSMIT</CyberButton>
+            {isRecording ? (
+              <div className="flex items-center justify-between bg-primary/5 p-4 border border-primary/20 animate-pulse">
+                <div className="flex items-center gap-3">
+                  <div className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_10px_#ef4444]" />
+                  <span className="font-mono text-xs text-primary uppercase">Recording_Audio_Signal...</span>
+                </div>
+                <div className="flex gap-2">
+                  <CyberButton onClick={stopRecording} variant="destructive" className="h-8 text-[10px]">STOP_&_TRANSMIT</CyberButton>
+                  <CyberButton onClick={() => { mediaRecorder.current?.stop(); audioChunks.current = []; setIsRecording(false); }} variant="secondary" className="h-8 text-[10px]">ABORT</CyberButton>
                 </div>
               </div>
-              {selectedFile && (
-                <div className="text-[10px] text-accent font-mono">
-                  ATTACHED: {selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)}KB)
-                  <button onClick={() => setSelectedFile(null)} className="ml-2 text-red-500 underline">CANCEL</button>
+            ) : (
+              <form onSubmit={handleSend} className="flex flex-col gap-2">
+                <div className="flex gap-2">
+                  <input
+                    type="file"
+                    id="file-upload"
+                    className="hidden"
+                    onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                    accept="image/*,video/*,audio/*"
+                  />
+                  <CyberButton 
+                    type="button" 
+                    onClick={() => document.getElementById('file-upload')?.click()}
+                    className={cn("px-3", selectedFile && "text-accent border-accent")}
+                  >
+                    <Plus className="w-4 h-4" />
+                  </CyberButton>
+                  <CyberButton
+                    type="button"
+                    onClick={startRecording}
+                    className="px-3"
+                  >
+                    <Volume2 className="w-4 h-4" />
+                  </CyberButton>
+                  <div className="flex gap-1 flex-1">
+                    <CyberInput 
+                      value={content} 
+                      onChange={(e) => setContent(e.target.value)} 
+                      placeholder="INPUT_SIGNAL..." 
+                      className="flex-1"
+                    />
+                    <CyberButton type="submit" disabled={!content.trim() && !selectedFile}>TRANSMIT</CyberButton>
+                  </div>
                 </div>
-              )}
-            </form>
+                {selectedFile && (
+                  <div className="text-[10px] text-accent font-mono">
+                    ATTACHED: {selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)}KB)
+                    <button onClick={() => setSelectedFile(null)} className="ml-2 text-red-500 underline">CANCEL</button>
+                  </div>
+                )}
+              </form>
+            )}
           </div>
         </div>
       </div>
