@@ -172,11 +172,25 @@ export default function Chat() {
 
   useEffect(() => {
     // Persistent Session Logic
-    const savedScroll = localStorage.getItem('chat_scroll_pos');
-    if (savedScroll) {
-      // Restore state if needed
+    const savedState = localStorage.getItem('chat_session_state');
+    if (savedState) {
+      const { recipientId, groupId, content: savedContent } = JSON.parse(savedState);
+      setSelectedRecipientId(recipientId);
+      setSelectedGroupId(groupId);
+      setContent(savedContent);
     }
-  }, []);
+
+    const handleBeforeUnload = () => {
+      localStorage.setItem('chat_session_state', JSON.stringify({
+        recipientId: selectedRecipientId,
+        groupId: selectedGroupId,
+        content
+      }));
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [selectedRecipientId, selectedGroupId, content]);
 
   useEffect(() => {
     if ("Notification" in window && Notification.permission !== "granted") {
@@ -378,7 +392,7 @@ export default function Chat() {
 
           <div className="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth custom-scrollbar" onScroll={(e) => {
             const target = e.currentTarget;
-            const isAtBottom = Math.abs(target.scrollHeight - target.clientHeight - target.scrollTop) < 1;
+            const isAtBottom = target.scrollHeight - target.scrollTop <= target.clientHeight + 1;
             setShowScrollButton(!isAtBottom);
           }}>
             {displayedMessages?.map((msg) => {
@@ -387,7 +401,10 @@ export default function Chat() {
                 <div 
                   key={msg.id} 
                   className={cn("flex flex-col max-w-[80%] group", isMe ? "ml-auto items-end" : "mr-auto items-start")}
-                  onDoubleClick={() => setContextMenu({ x: 0, y: 0, msgId: msg.id, isMe })}
+                  onDoubleClick={(e) => {
+                    e.preventDefault();
+                    setContextMenu({ x: e.clientX, y: e.clientY, msgId: msg.id, isMe });
+                  }}
                 >
                   <div className="flex items-center gap-2 mb-1">
                     <span className={cn("text-[10px] font-bold", isMe ? "text-primary" : "text-accent")}>{isMe ? 'YOU' : msg.senderName}</span>
@@ -397,24 +414,24 @@ export default function Chat() {
                     {msg.content}
                     {msg.mediaUrl && (
                       <div className="mt-2 border-t border-white/10 pt-2 min-h-[100px] flex items-center justify-center bg-black/20">
-                        {msg.mediaType === 'image' && <img src={msg.mediaUrl} alt="uploaded" className="max-w-full rounded border border-primary/20 block" style={{ display: 'block' }} />}
+                        {msg.mediaType === 'image' && <img src={msg.mediaUrl} alt="uploaded" className="max-w-full rounded border border-primary/20 block" />}
                         {msg.mediaType === 'video' && <video src={msg.mediaUrl} controls className="max-w-full rounded border border-primary/20" />}
                         {msg.mediaType === 'audio' && (
-                          <div className="w-full space-y-2">
+                          <div className="w-full space-y-2 p-2">
                             <div className="flex items-center gap-2">
                               <CyberButton size="icon" variant="ghost" onClick={(e) => {
-                                const audio = e.currentTarget.parentElement?.nextElementSibling as HTMLAudioElement;
+                                const audio = e.currentTarget.closest('.space-y-2')?.querySelector('audio') as HTMLAudioElement;
                                 if (audio.paused) audio.play(); else audio.pause();
                               }}>
                                 <Volume2 className="w-4 h-4" />
                               </CyberButton>
                               <div className="flex-1 h-8 bg-primary/10 rounded flex items-end gap-[1px] px-2 overflow-hidden">
                                 {[...Array(20)].map((_, i) => (
-                                  <div key={i} className="flex-1 bg-primary/40 animate-pulse" style={{ height: `${Math.random() * 100}%` }} />
+                                  <div key={i} className="flex-1 bg-primary/40 animate-pulse" style={{ height: `${20 + Math.random() * 80}%` }} />
                                 ))}
                               </div>
                             </div>
-                            <audio src={msg.mediaUrl} className="hidden" onPlay={(e) => e.currentTarget.previousElementSibling?.querySelector('.animate-pulse')?.classList.remove('paused')} />
+                            <audio src={msg.mediaUrl} className="hidden" />
                           </div>
                         )}
                       </div>
@@ -428,8 +445,8 @@ export default function Chat() {
 
           {showScrollButton && (
             <button 
-              onClick={scrollToBottom}
-              className="fixed bottom-24 right-8 z-20 p-2 rounded-full bg-primary/20 border border-primary/50 text-primary hover:bg-primary/30 transition-all animate-in fade-in slide-in-from-bottom-2"
+              onClick={() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })}
+              className="fixed bottom-24 right-8 z-[9999] p-2 rounded-full bg-primary/20 border border-primary/50 text-primary hover:bg-primary/30 transition-all animate-in fade-in slide-in-from-bottom-2"
             >
               <Send className="w-4 h-4 rotate-90" />
             </button>
@@ -437,13 +454,13 @@ export default function Chat() {
 
           {contextMenu && (
             <div 
-              className="fixed inset-0 z-50" 
+              className="fixed inset-0 z-[10000]" 
               onClick={() => setContextMenu(null)}
               onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }}
             >
               <div 
-                className="absolute bg-black/90 border border-primary/50 p-1 min-w-[120px] shadow-2xl animate-in zoom-in-95 duration-100"
-                style={{ top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}
+                className="absolute bg-black/95 border border-primary/50 p-1 min-w-[140px] shadow-[0_0_20px_rgba(0,255,0,0.2)] animate-in zoom-in-95 duration-100"
+                style={{ top: contextMenu.y, left: contextMenu.x }}
               >
                 <button className="w-full text-left px-3 py-2 text-[10px] font-mono hover:bg-primary/20 text-primary uppercase">Reply</button>
                 <button className="w-full text-left px-3 py-2 text-[10px] font-mono hover:bg-primary/20 text-primary uppercase">Forward</button>
