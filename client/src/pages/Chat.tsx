@@ -391,4 +391,140 @@ export default function Chat() {
             <form onSubmit={handleSend} className="flex flex-col gap-2">
               <div className="flex gap-2">
                 <input
-  
+                  type="file"
+                  id="file-upload"
+                  className="hidden"
+                  onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                  accept="image/*,video/*,audio/*"
+                />
+                <CyberButton 
+                  type="button" 
+                  onClick={() => document.getElementById('file-upload')?.click()}
+                  className={cn("px-3", selectedFile && "text-accent border-accent")}
+                >
+                  <Plus className="w-4 h-4" />
+                </CyberButton>
+                <CyberButton
+                  type="button"
+                  onMouseDown={startRecording}
+                  onMouseUp={stopRecording}
+                  onMouseLeave={stopRecording}
+                  className={cn("px-3", isRecording && "bg-red-500/50 animate-pulse")}
+                >
+                  <Volume2 className="w-4 h-4" />
+                </CyberButton>
+                <div className="flex gap-1">
+                  <CyberInput 
+                    value={content} 
+                    onChange={(e) => setContent(e.target.value)} 
+                    placeholder="INPUT_SIGNAL..." 
+                    className="flex-1"
+                  />
+                  <CyberButton type="submit" disabled={!content.trim() && !selectedFile}>TRANSMIT</CyberButton>
+                </div>
+              </div>
+              {selectedFile && (
+                <div className="text-[10px] text-accent font-mono">
+                  ATTACHED: {selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)}KB)
+                  <button onClick={() => setSelectedFile(null)} className="ml-2 text-red-500 underline">CANCEL</button>
+                </div>
+              )}
+            </form>
+          </div>
+        </div>
+      </div>
+      <audio ref={remoteAudio} autoPlay />
+      {isCalling && (
+        <div className="fixed inset-0 bg-black/95 z-50 flex flex-col items-center justify-center p-8 backdrop-blur-xl">
+          <div className="max-w-4xl w-full cyber-box border-primary/40 bg-primary/5 p-12 flex flex-col gap-8 shadow-[0_0_50px_rgba(0,255,0,0.1)]">
+            <div className="flex items-center justify-between border-b border-primary/20 pb-6">
+              <div className="flex items-center gap-4">
+                <div className="w-4 h-4 rounded-full bg-green-500 animate-pulse shadow-[0_0_15px_#00ff00]" />
+                <h2 className="font-display text-2xl tracking-[0.2em] text-glow uppercase">Secure_Voice_Session</h2>
+              </div>
+              <div className="font-mono text-sm text-primary opacity-50">ENCRYPTION: AES-256-TERMINAL</div>
+            </div>
+
+            <div className="flex-1 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+              <div className="flex flex-col items-center gap-3 p-4 border border-primary/20 bg-primary/5 rounded">
+                <div className="w-16 h-16 rounded-full bg-primary/20 border border-primary/40 flex items-center justify-center">
+                  <Users className="w-8 h-8 text-primary" />
+                </div>
+                <span className="font-mono text-xs text-primary">YOU (LOCAL)</span>
+                <div className="text-[10px] text-green-500 uppercase tracking-tighter">Connected</div>
+              </div>
+              {participants.map(p => (
+                <div key={p} className="flex flex-col items-center gap-3 p-4 border border-primary/20 bg-primary/5 rounded animate-in fade-in">
+                  <div className="w-16 h-16 rounded-full bg-accent/20 border border-accent/40 flex items-center justify-center">
+                    <Users className="w-8 h-8 text-accent" />
+                  </div>
+                  <span className="font-mono text-xs text-accent">OPERATIVE_{p}</span>
+                  <div className="text-[10px] text-accent uppercase tracking-tighter">In_Session</div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-center items-center gap-6 pt-8 border-t border-primary/20">
+              <CyberButton 
+                variant={isMuted ? "destructive" : "secondary"} 
+                onClick={toggleMute}
+                className="w-16 h-16 rounded-full"
+              >
+                <Volume2 className={cn("w-6 h-6", isMuted && "opacity-50")} />
+              </CyberButton>
+
+              <CyberButton 
+                variant="secondary" 
+                onClick={() => {
+                  const msg = "[SYSTEM] VOICE_CALL_PING";
+                  sendMessage.mutate({
+                    content: msg,
+                    groupId: selectedGroupId || undefined,
+                    recipientId: selectedRecipientId || undefined
+                  } as any);
+                }}
+                className="w-16 h-16 rounded-full"
+              >
+                <MessageSquare className="w-6 h-6" />
+              </CyberButton>
+
+              <CyberButton 
+                variant="destructive" 
+                onClick={() => { pc.current?.close(); setIsCalling(false); }}
+                className="w-24 h-16 px-8"
+              >
+                DISCONNECT
+              </CyberButton>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="fixed top-20 right-8 z-40">
+        <CyberCard className="p-4 w-64 bg-black/80 backdrop-blur">
+          <div className="text-xs font-display mb-3 text-glow">COMMS_CONFIG</div>
+          <div className="space-y-4">
+            <div className="space-y-1">
+              <div className="text-[10px] opacity-50 uppercase">Ringtone_URL</div>
+              <CyberInput 
+                value={userSettings?.ringtoneUrl || ""} 
+                onChange={e => updateSettings.mutate({ ringtoneUrl: e.target.value })}
+                className="h-8 text-[10px]"
+                placeholder="YouTube/Audio URL"
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="text-[10px] opacity-50 uppercase">Mute_Alerts</div>
+              <input 
+                type="checkbox" 
+                checked={userSettings?.muteNotifications}
+                onChange={e => updateSettings.mutate({ muteNotifications: e.target.checked })}
+                className="accent-primary"
+              />
+            </div>
+          </div>
+        </CyberCard>
+      </div>
+    </Layout>
+  );
+}
