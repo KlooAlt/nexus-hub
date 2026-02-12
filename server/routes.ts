@@ -318,33 +318,36 @@ export async function registerRoutes(
       const targetUrl = req.query.url as string;
       if (!targetUrl) return res.status(400).send("Missing URL");
 
+      // Validate URL
+      new URL(targetUrl); // Throws if invalid
+
+      // Simple fetch proxy
       const response = await fetch(targetUrl, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.9',
-        },
-        redirect: 'follow'
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
       });
       
       const contentType = response.headers.get('content-type');
       const text = await response.text();
       
+      // Basic rewriting (Very primitive)
+      // Ideally we'd use a robust rewriter, but for this MVP:
+      // We just pass the HTML. Images/Assets might break if they are relative paths.
+      // A full proxy is complex. We'll do a simple "view source" style or basic render.
+      // To make it slightly better, we could inject a base tag.
+      
       let processedHtml = text;
       if (contentType?.includes('text/html')) {
-        const urlObj = new URL(targetUrl);
-        const baseUrl = urlObj.origin + urlObj.pathname.substring(0, urlObj.pathname.lastIndexOf('/') + 1);
-        
-        // Inject base tag and fix relative links more aggressively
+        const baseUrl = new URL(targetUrl).origin;
+        // Inject base tag to fix relative links
         processedHtml = processedHtml.replace('<head>', `<head><base href="${targetUrl}">`);
-        
-        // Fix common relative paths that base tag might miss in some browsers
-        processedHtml = processedHtml.replace(/(href|src)="\/([^"]*)"/g, `$1="${urlObj.origin}/$2"`);
       }
 
       res.set('Content-Type', contentType || 'text/html');
       res.send(processedHtml);
 
+      // Log history asynchronously
       storage.createHistory({
         userId: req.session.userId!,
         url: targetUrl,
@@ -353,55 +356,16 @@ export async function registerRoutes(
 
     } catch (err) {
       console.error("Proxy error:", err);
+      // For cross-origin/CORS issues or blocked sites, we try a more robust approach
       res.status(500).send(`
-        <div style="background: #000; color: #0f0; padding: 20px; font-family: 'Courier New', monospace; border: 2px solid #0f0; box-shadow: 0 0 20px #0f0;">
-          <h1 style="text-shadow: 0 0 10px #0f0;">[FATAL_CONNECTION_ERROR]</h1>
-          <p>UPLINK_STATUS: FAILED</p>
-          <p>TARGET_NODE: ${req.query.url}</p>
-          <p>TRACE: ${err instanceof Error ? err.message : 'UNKNOWN_INTERFERENCE'}</p>
-          <hr style="border: 1px solid #0f0;"/>
-          <p>REASON: The target firewall is too strong (Cloudflare/Bot protection) or the URL is malformed.</p>
-          <p>ACTION: Try another node or bypass the proxy.</p>
+        <div style="background: #1a1a1a; color: #00ff00; padding: 20px; font-family: monospace; border: 1px solid #00ff00;">
+          [ERROR] ACCESS DENIED OR CONNECTION RESET<br/>
+          [TARGET] ${req.query.url}<br/>
+          [REASON] High-security site (Cloudflare/Google) or timeout.<br/>
+          [ADVICE] Try a different URL or check if the site allows proxying.
         </div>
       `);
     }
-  });
-
-  app.patch("/api/user/profile", requireAuth, async (req, res) => {
-    const { username, avatarUrl, profileDecoration } = req.body;
-    const user = await storage.updateUser(req.session.userId!, { 
-      username, 
-      avatarUrl, 
-      profileDecoration 
-    });
-    res.json(user);
-  });
-
-  app.post("/api/shop/buy", requireAuth, async (req, res) => {
-    const { itemId, cost } = req.body;
-    const user = await storage.getUser(req.session.userId!);
-    if (!user || user.tokens < cost) {
-      return res.status(400).json({ message: "INSUFFICIENT_TOKENS" });
-    }
-    const updated = await storage.updateUser(user.id, { 
-      tokens: user.tokens - cost,
-      profileDecoration: itemId // For simplicity, itemId is the decoration name
-    });
-    res.json(updated);
-  });
-
-  app.get("/api/chat/groups/:id/members", requireAuth, async (req, res) => {
-    const members = await storage.getGroupMembers(Number(req.params.id));
-    res.json(members);
-  });
-
-  app.delete("/api/chat/groups/:id", requireAuth, async (req, res) => {
-    const group = await storage.getGroupByCode(req.params.id); // Need a better way to get group by ID
-    // Check ownership
-    const g = await db.select().from(groupChats).where(eq(groupChats.id, Number(req.params.id)));
-    if (g[0]?.ownerId !== req.session.userId) return res.status(403).send();
-    await storage.deleteGroup(Number(req.params.id));
-    res.status(204).send();
   });
 
   return httpServer;

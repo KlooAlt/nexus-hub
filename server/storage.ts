@@ -156,50 +156,9 @@ export class DatabaseStorage implements IStorage {
     .orderBy(messages.createdAt);
   }
 
-  async createMessage(msg: { senderId: number; recipientId?: number | null; groupId?: number | null; content: string; mediaUrl?: string | null; mediaType?: string | null; replyToId?: number | null; isForwarded?: boolean }): Promise<Message> {
-    // Deduct token
-    await db.update(users).set({ 
-      tokens: sql`${users.tokens} - 1` 
-    }).where(eq(users.id, msg.senderId));
-    
+  async createMessage(msg: { senderId: number; recipientId?: number | null; groupId?: number | null; content: string; mediaUrl?: string | null; mediaType?: string | null }): Promise<Message> {
     const [message] = await db.insert(messages).values(msg).returning();
     return message;
-  }
-
-  async updateUser(id: number, data: Partial<User>): Promise<User> {
-    const [user] = await db.update(users).set(data).where(eq(users.id, id)).returning();
-    return user;
-  }
-
-  async kickMember(groupId: number, userId: number): Promise<void> {
-    await db.delete(groupChatMembers).where(
-      and(eq(groupChatMembers.groupId, groupId), eq(groupChatMembers.userId, userId))
-    );
-  }
-
-  async deleteGroup(groupId: number): Promise<void> {
-    await db.delete(groupChatMembers).where(eq(groupChatMembers.groupId, groupId));
-    await db.delete(messages).where(eq(messages.groupId, groupId));
-    await db.delete(groupChats).where(eq(groupChats.id, groupId));
-  }
-
-  async getGroupMembers(groupId: number): Promise<User[]> {
-    return await db.select({
-      id: users.id,
-      username: users.username,
-      avatarUrl: users.avatarUrl,
-      role: users.role,
-      serialKey: users.serialKey,
-      expiresAt: users.expiresAt,
-      createdAt: users.createdAt,
-      ringtoneUrl: users.ringtoneUrl,
-      muteNotifications: users.muteNotifications,
-      profileDecoration: users.profileDecoration,
-      tokens: users.tokens,
-    })
-    .from(users)
-    .innerJoin(groupChatMembers, eq(groupChatMembers.userId, users.id))
-    .where(eq(groupChatMembers.groupId, groupId));
   }
 
   async getAllUsers(): Promise<User[]> {

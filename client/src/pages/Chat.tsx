@@ -254,33 +254,7 @@ export default function Chat() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isSystemLogsOpen, setIsSystemLogsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'NODES' | 'GROUPS' | 'HUB' | 'SHOP'>('NODES');
-  const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [profileUser, setProfileUser] = useState<any>(null);
-
-  // --- SHOP DATA ---
-  const SHOP_ITEMS = [
-    { id: 'neon_border', name: 'NEON_FRAME', cost: 50, color: '#00ff00' },
-    { id: 'glitch_aura', name: 'GLITCH_AURA', cost: 75, color: '#ff00ff' },
-    { id: 'matrix_rain', name: 'MATRIX_CODE', cost: 100, color: '#00ff00' },
-    { id: 'crimson_void', name: 'CRIMSON_VOID', cost: 150, color: '#ff0000' },
-  ];
-
-  const buyItem = useMutation({
-    mutationFn: async (item: any) => {
-      const res = await fetch('/api/shop/buy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ itemId: item.id, cost: item.cost })
-      });
-      if (!res.ok) throw new Error("Purchase failed");
-      return res.json();
-    },
-    onSuccess: () => {
-      refetchConfig();
-      toast({ title: "DECORATION_SYNCED", description: "Profile hardware upgraded." });
-    }
-  });
+  const [activeTab, setActiveTab] = useState<'NODES' | 'GROUPS' | 'HUB'>('NODES');
 
   // --- MESSAGE STATE ---
   const [inputContent, setInputContent] = useState("");
@@ -506,28 +480,6 @@ export default function Chat() {
     return "BROADCAST_HUB";
   }, [selectedGroupId, selectedRecipientId, groups, users]);
 
-  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
-  const [editUsername, setEditUsername] = useState(currentUser?.username || "");
-  const [editAvatarUrl, setEditAvatarUrl] = useState(userConfig?.avatarUrl || "");
-
-  const handleUpdateProfile = () => {
-    updateProfile.mutate({ username: editUsername, avatarUrl: editAvatarUrl });
-    setIsEditProfileOpen(false);
-  };
-
-  const handleKickMember = async (groupId: number, userId: number) => {
-    if (!window.confirm("KICK_OPERATIVE_FROM_NODE?")) return;
-    await fetch(`/api/chat/groups/${groupId}/members/${userId}`, { method: 'DELETE' });
-    queryClient.invalidateQueries({ queryKey: [`/api/chat/groups/${groupId}/members`] });
-  };
-
-  const handleDeleteGroup = async (groupId: number) => {
-    if (!window.confirm("TERMINATE_GROUP_NODE_PERMANENTLY?")) return;
-    await fetch(`/api/chat/groups/${groupId}`, { method: 'DELETE' });
-    queryClient.invalidateQueries({ queryKey: ['/api/chat/groups'] });
-    selectBroadcast();
-  };
-
   return (
     <Layout>
       <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-140px)] relative overflow-hidden bg-[url('/noise.gif')]">
@@ -555,8 +507,8 @@ export default function Chat() {
                 </div>
 
                 {/* Filter Search */}
-                <div className="p-4 bg-black/40 flex items-center gap-2">
-                  <div className="relative flex-1">
+                <div className="p-4 bg-black/40">
+                  <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-primary/30" />
                     <input 
                       value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
@@ -564,51 +516,17 @@ export default function Chat() {
                       placeholder="SCAN_FOR_ID..."
                     />
                   </div>
-                  <CyberButton 
-                    variant="outline" 
-                    className="h-8 px-2"
-                    onClick={() => setActiveTab('SHOP')}
-                  >
-                    <Box className="w-4 h-4" />
-                  </CyberButton>
                 </div>
 
                 {/* Scrollable Node List */}
                 <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
-                  {activeTab === 'SHOP' ? (
-                    <div className="p-4 space-y-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-[10px] font-bold text-primary tracking-widest uppercase">Cyber_Bazaar</span>
-                        <span className="text-[10px] text-accent font-mono">TOKENS: {userConfig?.tokens || 0}</span>
-                      </div>
-                      {SHOP_ITEMS.map(item => (
-                        <div key={item.id} className="p-3 border border-primary/20 bg-primary/5 flex items-center justify-between group">
-                          <div className="flex flex-col">
-                            <span className="text-[10px] font-bold text-white">{item.name}</span>
-                            <span className="text-[8px] text-primary/60">{item.cost} TOKENS</span>
-                          </div>
-                          <CyberButton 
-                            disabled={buyItem.isPending || (userConfig?.tokens || 0) < item.cost}
-                            onClick={() => buyItem.mutate(item)}
-                            className="h-7 text-[8px] px-2"
-                          >
-                            BUY
-                          </CyberButton>
-                        </div>
-                      ))}
-                      <CyberButton variant="ghost" className="w-full h-8 text-[10px]" onClick={() => setActiveTab('NODES')}>BACK_TO_NODES</CyberButton>
-                    </div>
-                  ) : (
-                    <>
-                      {/* Hub Button */}
-                      <CyberSidebarNode 
-                        label="BROADCAST_HUB" 
-                        isActive={!selectedRecipientId && !selectedGroupId} 
-                        onClick={selectBroadcast} 
-                      />
-                      {/* Rest of Nodes... */}
-                    </>
-                  )}
+
+                  {/* Hub Button */}
+                  <CyberSidebarNode 
+                    label="BROADCAST_HUB" 
+                    isActive={!selectedRecipientId && !selectedGroupId} 
+                    onClick={selectBroadcast} 
+                  />
 
                   <div className="h-px bg-primary/10 my-4 mx-4" />
 
@@ -638,56 +556,29 @@ export default function Chat() {
                   </div>
                   <div className="px-2 space-y-1 mb-6">
                     {groups.map((g: any) => (
-                      <div key={g.id} onDoubleClick={(e) => {
-                        e.preventDefault();
-                        if (window.confirm("VIEW_OPERATIVES_OR_DELETE_GC?")) {
-                          // In a full build we'd show a modal, for now owner can delete
-                          if (currentUser?.id === g.ownerId) handleDeleteGroup(g.id);
-                        }
-                      }}>
-                        <CyberSidebarNode 
-                          label={g.name} 
-                          isActive={selectedGroupId === g.id} 
-                          onClick={() => selectGroupNode(g.id)} 
-                        />
-                      </div>
+                      <CyberSidebarNode 
+                        key={g.id} 
+                        label={g.name} 
+                        isActive={selectedGroupId === g.id} 
+                        onClick={() => selectGroupNode(g.id)} 
+                      />
                     ))}
                   </div>
                 </div>
 
                 {/* Profile Tray */}
                 <div className="p-4 border-t border-primary/20 bg-black flex items-center gap-4">
-                  <div 
-                    className="relative group cursor-pointer" 
-                    onClick={() => { setProfileUser(currentUser); setIsProfileOpen(true); }}
-                  >
-                    <div className={cn(
-                      "w-10 h-10 border border-primary/20 p-1 transition-all",
-                      userConfig?.profileDecoration === 'neon_border' && "border-green-500 shadow-[0_0_15px_rgba(0,255,0,0.4)]",
-                      userConfig?.profileDecoration === 'glitch_aura' && "border-fuchsia-500 shadow-[0_0_15px_rgba(255,0,255,0.4)] animate-pulse",
-                      userConfig?.profileDecoration === 'matrix_rain' && "border-emerald-400 shadow-[0_0_20px_rgba(0,255,0,0.6)]"
-                    )}>
-                      <div className="w-full h-full bg-primary/10 flex items-center justify-center overflow-hidden">
-                        {userConfig?.avatarUrl ? (
-                          <img src={userConfig.avatarUrl} className="w-full h-full object-cover" alt="avatar" />
-                        ) : (
-                          <Cpu className="w-5 h-5 text-primary" />
-                        )}
-                      </div>
+                  <div className="w-10 h-10 border border-primary/20 p-1">
+                    <div className="w-full h-full bg-primary/10 flex items-center justify-center">
+                      <Cpu className="w-5 h-5 text-primary" />
                     </div>
-                    {currentUser?.role === 'owner' && (
-                      <div className="absolute -top-1 -right-1 bg-yellow-500 text-black text-[7px] font-bold px-1 rounded shadow-lg border border-black z-10">OWNER</div>
-                    )}
                   </div>
                   <div className="flex-1 overflow-hidden">
-                    <div className="flex items-center justify-between">
-                      <div className="text-[10px] font-bold text-primary uppercase truncate tracking-widest">{currentUser?.username}</div>
-                      <div className="text-[8px] font-mono text-accent">[{userConfig?.tokens || 0} T]</div>
-                    </div>
+                    <div className="text-[10px] font-bold text-primary uppercase truncate tracking-widest">{currentUser?.username}</div>
                     <div className="text-[8px] font-mono text-primary/40 uppercase">Enc_Level: Omega</div>
                   </div>
                   <Settings 
-                    onClick={() => setIsEditProfileOpen(true)}
+                    onClick={() => setIsSystemLogsOpen(true)}
                     className="w-4 h-4 text-primary/40 hover:text-primary cursor-pointer transition-colors" 
                   />
                 </div>
@@ -1124,86 +1015,6 @@ export default function Chat() {
 
       {/* HIDDEN LOGICAL AUDIO HOOKS */}
       <audio ref={r => { if(r) r.srcObject = null; }} autoPlay />
-
-      {/* PROFILE MODAL (DISCORD STYLE) */}
-      <AnimatePresence>
-        {isProfileOpen && profileUser && (
-          <div className="fixed inset-0 bg-black/90 backdrop-blur-xl z-[1000] flex items-center justify-center p-4">
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="w-full max-w-md cyber-box bg-black border-primary/40 p-0 overflow-hidden">
-              <div className="h-24 bg-primary/20 relative">
-                <div className="absolute -bottom-12 left-6">
-                  <div className={cn(
-                    "w-24 h-24 rounded-lg bg-black border-4 border-black p-1",
-                    profileUser.profileDecoration === 'neon_border' && "shadow-[0_0_20px_#00ff00]",
-                    profileUser.profileDecoration === 'glitch_aura' && "shadow-[0_0_20px_#ff00ff]"
-                  )}>
-                    <div className="w-full h-full bg-primary/10 flex items-center justify-center overflow-hidden">
-                      {profileUser.avatarUrl ? (
-                        <img src={profileUser.avatarUrl} className="w-full h-full object-cover" alt="avatar" />
-                      ) : (
-                        <Users className="w-12 h-12 text-primary" />
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="pt-16 p-6 pb-8">
-                <div className="flex justify-between items-start mb-6">
-                  <div>
-                    <h2 className="text-xl font-display text-primary tracking-widest uppercase flex items-center gap-3">
-                      {profileUser.username}
-                      {profileUser.role === 'owner' && <ShieldCheck className="w-5 h-5 text-yellow-500" />}
-                    </h2>
-                    <p className="text-[10px] font-mono text-primary/40 mt-1 uppercase">NODE_ID: {profileUser.id}</p>
-                  </div>
-                  <div className="flex gap-2">
-                    {profileUser.id === currentUser?.id ? (
-                      <CyberButton onClick={() => setIsEditProfileOpen(true)} className="h-8 text-[10px]">EDIT_PROFILE</CyberButton>
-                    ) : (
-                      <CyberButton onClick={() => { selectPrivateNode(profileUser.id); setIsProfileOpen(false); }} className="h-8 text-[10px]">MESSAGE</CyberButton>
-                    )}
-                    <CyberButton variant="outline" onClick={() => setIsProfileOpen(false)} className="h-8 px-2"><X className="w-4 h-4" /></CyberButton>
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  <div className="p-4 bg-primary/5 border border-primary/10 rounded">
-                    <span className="text-[10px] font-bold text-primary/60 uppercase block mb-2 tracking-[0.2em]">Network_Status</span>
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-green-500" />
-                      <span className="text-xs font-mono text-green-500 uppercase">Secure_Uplink_Established</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* EDIT PROFILE MODAL */}
-      <AnimatePresence>
-        {isEditProfileOpen && (
-          <div className="fixed inset-0 bg-black/95 z-[1100] flex items-center justify-center p-4">
-            <motion.div initial={{ y: 20 }} animate={{ y: 0 }} className="w-full max-w-sm cyber-box bg-black p-8 border-primary shadow-2xl">
-              <h2 className="text-sm font-display text-primary mb-8 uppercase tracking-[0.4em]">Config_Hardware</h2>
-              <div className="space-y-6">
-                <div>
-                  <label className="text-[10px] font-bold text-primary/40 uppercase mb-2 block">Display_Name</label>
-                  <CyberInput value={editUsername} onChange={e => setEditUsername(e.target.value)} className="h-10" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-primary/40 uppercase mb-2 block">Avatar_Buffer_URL</label>
-                  <CyberInput value={editAvatarUrl} onChange={e => setEditAvatarUrl(e.target.value)} placeholder="https://..." className="h-10" />
-                </div>
-                <div className="flex gap-3 pt-4">
-                  <CyberButton onClick={handleUpdateProfile} className="flex-1 h-10">SAVE_CHANGES</CyberButton>
-                  <CyberButton variant="outline" onClick={() => setIsEditProfileOpen(false)} className="h-10">CANCEL</CyberButton>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
     </Layout>
   );
 }
