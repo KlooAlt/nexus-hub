@@ -30,6 +30,13 @@ export interface IStorage {
   createMessage(msg: { senderId: number; recipientId?: number | null; groupId?: number | null; content: string }): Promise<Message>;
   getAllUsers(): Promise<User[]>;
 
+  // Shop & Decorations
+  getShopItems(): Promise<any[]>;
+  createShopItem(item: any): Promise<any>;
+  buyItem(userId: number, itemId: number): Promise<void>;
+  getUserInventory(userId: number): Promise<any[]>;
+  updateUserDecoration(userId: number, decorationId: number | null, nameStyleId: number | null): Promise<void>;
+
   // Groups
   createGroup(data: { name: string; inviteCode: string; ownerId: number }): Promise<any>;
   joinGroup(userId: number, groupId: number): Promise<void>;
