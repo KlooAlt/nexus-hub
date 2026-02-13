@@ -111,6 +111,8 @@ export class DatabaseStorage implements IStorage {
         recipientId: messages.recipientId,
         groupId: messages.groupId,
         content: messages.content,
+        mediaUrl: messages.mediaUrl,
+        mediaType: messages.mediaType,
         createdAt: messages.createdAt,
         senderName: users.username,
       })
@@ -127,6 +129,8 @@ export class DatabaseStorage implements IStorage {
         recipientId: messages.recipientId,
         groupId: messages.groupId,
         content: messages.content,
+        mediaUrl: messages.mediaUrl,
+        mediaType: messages.mediaType,
         createdAt: messages.createdAt,
         senderName: users.username,
       })
@@ -154,6 +158,8 @@ export class DatabaseStorage implements IStorage {
       recipientId: messages.recipientId,
       groupId: messages.groupId,
       content: messages.content,
+      mediaUrl: messages.mediaUrl,
+      mediaType: messages.mediaType,
       createdAt: messages.createdAt,
       senderName: users.username,
     })
@@ -170,6 +176,48 @@ export class DatabaseStorage implements IStorage {
 
   async getAllUsers(): Promise<User[]> {
     return await db.select().from(users);
+  }
+
+  // Shop & Decorations implementation
+  async getShopItems(): Promise<any[]> {
+    return await db.select().from(shopItems);
+  }
+
+  async createShopItem(item: any): Promise<any> {
+    const [newItem] = await db.insert(shopItems).values(item).returning();
+    return newItem;
+  }
+
+  async buyItem(userId: number, itemId: number): Promise<void> {
+    const [item] = await db.select().from(shopItems).where(eq(shopItems.id, itemId));
+    const [user] = await db.select().from(users).where(eq(users.id, userId));
+    
+    if (!item || !user) throw new Error("Item or User not found");
+    if (user.coins < item.price) throw new Error("Insufficient coins");
+
+    await db.transaction(async (tx) => {
+      await tx.update(users).set({ coins: user.coins - item.price }).where(eq(users.id, userId));
+      await tx.insert(userInventory).values({ userId, itemId });
+    });
+  }
+
+  async getUserInventory(userId: number): Promise<any[]> {
+    return await db.select({
+      id: shopItems.id,
+      name: shopItems.name,
+      type: shopItems.type,
+      imageUrl: shopItems.imageUrl,
+      cssStyles: shopItems.cssStyles,
+    })
+    .from(userInventory)
+    .innerJoin(shopItems, eq(userInventory.itemId, shopItems.id))
+    .where(eq(userInventory.userId, userId));
+  }
+
+  async updateUserDecoration(userId: number, decorationId: number | null, nameStyleId: number | null): Promise<void> {
+    await db.update(users)
+      .set({ decorationId, nameStyleId })
+      .where(eq(users.id, userId));
   }
 
   // Groups

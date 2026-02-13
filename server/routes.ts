@@ -250,6 +250,38 @@ export async function registerRoutes(
     res.json(usersList);
   });
 
+  // === SHOP ===
+  app.get("/api/shop/items", requireAuth, async (req, res) => {
+    const items = await storage.getShopItems();
+    res.json(items);
+  });
+
+  app.post("/api/shop/buy", requireAuth, async (req, res) => {
+    const { itemId } = req.body;
+    try {
+      await storage.buyItem(req.session.userId!, itemId);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/shop/inventory", requireAuth, async (req, res) => {
+    const inventory = await storage.getUserInventory(req.session.userId!);
+    res.json(inventory);
+  });
+
+  app.post("/api/shop/equip", requireAuth, async (req, res) => {
+    const { decorationId, nameStyleId } = req.body;
+    await storage.updateUserDecoration(req.session.userId!, decorationId, nameStyleId);
+    res.json({ success: true });
+  });
+
+  app.post("/api/admin/shop/items", requireOwner, async (req, res) => {
+    const item = await storage.createShopItem(req.body);
+    res.status(201).json(item);
+  });
+
   // === VOICE CALL SIGNALING (ENHANCED) ===
   const signals = new Map<number, any[]>();
   const activeCalls = new Map<string, Set<number>>(); // key: targetId (user or group), value: set of userIds

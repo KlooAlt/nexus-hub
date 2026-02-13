@@ -249,6 +249,7 @@ export default function Chat() {
   // --- CHANNEL SELECTOR STATE ---
   const [selectedRecipientId, setSelectedRecipientId] = useState<number | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
+  const [isCallingGroup, setIsCallingGroup] = useState(false);
 
   // --- UI & SEARCH STATE ---
   const [searchTerm, setSearchTerm] = useState("");
@@ -533,20 +534,13 @@ export default function Chat() {
                   {/* Private Nodes (Mapped to match your screenshot) */}
                   <div className="px-2 space-y-1 mb-8">
                     {/* Real users logic */}
-                    {users?.filter(u => u.id !== currentUser?.id).map(u => (
+                    {users?.map(u => (
                       <CyberSidebarNode 
                         key={u.id} 
                         label={u.username} 
                         isActive={selectedRecipientId === u.id} 
                         onClick={() => selectPrivateNode(u.id)} 
                       />
-                    ))}
-
-                    {/* Visual Placeholders for Image Match if DB is empty */}
-                    {(!users || users.length < 5) && [
-                      "VTHERIPPER", "JAKE", "PETER", "MR FALL", "FORGTY", "POTATO 🥔", "I'M A HACKER", "SILVAN :)"
-                    ].map(node => (
-                      <CyberSidebarNode key={node} label={node} isActive={false} onClick={() => {}} />
                     ))}
                   </div>
 
