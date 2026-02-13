@@ -250,6 +250,8 @@ export default function Chat() {
   const [selectedRecipientId, setSelectedRecipientId] = useState<number | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
   const [isCallingGroup, setIsCallingGroup] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [showEveryoneList, setShowEveryoneList] = useState(false);
 
   // --- UI & SEARCH STATE ---
   const [searchTerm, setSearchTerm] = useState("");
@@ -485,6 +487,53 @@ export default function Chat() {
     <Layout>
       <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-140px)] relative overflow-hidden bg-[url('/noise.gif')]">
 
+        {/* EVERYONE LIST MODAL */}
+        <AnimatePresence>
+          {showEveryoneList && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+              <motion.div 
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="cyber-box w-full max-w-md bg-black border-primary p-6"
+              >
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="font-display text-primary uppercase tracking-widest">Global_Directory</h2>
+                  <CyberButton variant="outline" size="icon" onClick={() => setShowEveryoneList(false)}>
+                    <X className="w-4 h-4" />
+                  </CyberButton>
+                </div>
+                <div className="space-y-2 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
+                  {users?.map(u => (
+                    <div key={u.id} className="flex items-center justify-between p-3 border border-primary/20 bg-primary/5 hover:bg-primary/10 transition-colors">
+                      <div className="flex items-center gap-3">
+                        <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_#22c55e]" />
+                        <span className="font-mono text-primary text-sm">{u.username}</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <CyberButton 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => { selectPrivateNode(u.id); setShowEveryoneList(false); }}
+                        >
+                          MSG
+                        </CyberButton>
+                        <CyberButton 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => { selectPrivateNode(u.id); setShowEveryoneList(false); triggerNeuralCall(); }}
+                        >
+                          CALL
+                        </CyberButton>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
         {/* ==================================================================
             SIDEBAR: NETWORK_DIRECTORIES
             ================================================================== */}
@@ -587,7 +636,7 @@ export default function Chat() {
         <div className="flex-1 cyber-box p-0 flex flex-col bg-black/70 border-primary/10 overflow-hidden relative backdrop-blur-sm shadow-inner">
 
           {/* Channel Header HUD */}
-          <div className="p-5 border-b border-primary/20 flex items-center justify-between bg-black/60 z-20">
+          <header className="p-5 border-b border-primary/20 flex items-center justify-between bg-black/60 z-20">
             <div className="flex items-center gap-5">
               {!isSidebarOpen && (
                 <button onClick={() => setIsSidebarOpen(true)} className="p-2 border border-primary/20 hover:bg-primary/10 text-primary">
@@ -609,7 +658,14 @@ export default function Chat() {
               </div>
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
+              <CyberButton 
+                onClick={() => setShowEveryoneList(true)}
+                variant="outline" 
+                className="h-9 px-3 text-[10px] hidden sm:flex"
+              >
+                <Users className="w-3.5 h-3.5 mr-2" /> DIRECTORY
+              </CyberButton>
               <button 
                 onClick={triggerNeuralCall}
                 className="p-2.5 border border-primary/20 hover:border-primary text-primary transition-all group"
@@ -623,7 +679,7 @@ export default function Chat() {
                 <Video className="w-4.5 h-4.5 group-hover:scale-110" />
               </button>
             </div>
-          </div>
+          </header>
 
           {/* Chat Feed */}
           <div className="flex-1 overflow-y-auto p-8 space-y-4 custom-scrollbar bg-[url('/grid.png')] bg-fixed">

@@ -277,7 +277,7 @@ export async function registerRoutes(
     res.json({ success: true });
   });
 
-  app.post("/api/admin/shop/items", requireOwner, async (req, res) => {
+  app.post("/api/admin/shop_items", requireOwner, async (req, res) => {
     const item = await storage.createShopItem(req.body);
     res.status(201).json(item);
   });

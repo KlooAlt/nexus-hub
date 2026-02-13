@@ -5,14 +5,35 @@ import { CyberButton } from "@/components/CyberButton";
 import { CyberCard } from "@/components/CyberCard";
 import { useAdminKeys } from "@/hooks/use-admin";
 import { useAuth } from "@/hooks/use-auth";
-import { ShieldAlert, Plus, Trash2, Key } from "lucide-react";
+import { ShieldAlert, Plus, Trash2, Key, ShoppingBag, Star, Palette, Shield } from "lucide-react";
 import { format } from "date-fns";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
 
 export default function Admin() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const { keys, generateKey, deleteKey } = useAdminKeys();
   const [duration, setDuration] = useState("60");
   const [type, setType] = useState<"limited" | "permanent">("limited");
+
+  const createShopItem = useMutation({
+    mutationFn: async (item: any) => {
+      const res = await fetch("/api/admin/shop_items", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(item),
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/shop/items"] });
+      toast({ title: "Item Created", description: "Shop item is now live." });
+    }
+  });
 
   if (user?.role !== "owner") {
     return (
@@ -37,138 +58,185 @@ export default function Admin() {
 
   return (
     <Layout>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Generator Panel */}
-        <div className="lg:col-span-1 space-y-6">
-          <CyberCard title="KEY_GENERATOR" className="h-full">
-            <div className="space-y-6">
-              <div className="space-y-2">
-                <label className="text-xs text-muted-foreground font-mono uppercase">Access Type</label>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setType("limited")}
-                    className={`flex-1 py-2 border text-xs font-mono uppercase transition-all ${
-                      type === "limited" 
-                        ? "border-primary bg-primary/20 text-primary" 
-                        : "border-muted-foreground/30 text-muted-foreground hover:border-primary/50"
-                    }`}
-                  >
-                    Temporary
-                  </button>
-                  <button
-                    onClick={() => setType("permanent")}
-                    className={`flex-1 py-2 border text-xs font-mono uppercase transition-all ${
-                      type === "permanent" 
-                        ? "border-accent bg-accent/20 text-accent" 
-                        : "border-muted-foreground/30 text-muted-foreground hover:border-accent/50"
-                    }`}
-                  >
-                    Permanent
-                  </button>
-                </div>
-              </div>
+      <div className="max-w-6xl mx-auto p-6">
+        <h1 className="text-2xl font-display text-primary mb-8 tracking-[0.4em] uppercase">SYSTEM_ADMIN_CONSOLE</h1>
+        
+        <Tabs defaultValue="keys" className="w-full">
+          <TabsList className="grid w-full grid-cols-2 bg-black border border-primary/20">
+            <TabsTrigger value="keys" className="font-mono uppercase text-xs data-[state=active]:bg-primary/20">Access_Control</TabsTrigger>
+            <TabsTrigger value="shop" className="font-mono uppercase text-xs data-[state=active]:bg-primary/20">Market_Ops</TabsTrigger>
+          </TabsList>
 
-              {type === "limited" && (
-                <CyberInput
-                  label="DURATION (MINUTES)"
-                  type="number"
-                  value={duration}
-                  onChange={(e) => setDuration(e.target.value)}
-                />
-              )}
-
-              <CyberButton 
-                onClick={handleGenerate} 
-                className="w-full"
-                isLoading={generateKey.isPending}
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                MINT_KEY
-              </CyberButton>
-
-              <div className="p-4 border border-yellow-500/30 bg-yellow-500/5 mt-4">
-                <div className="text-yellow-500 text-xs font-bold mb-1 flex items-center gap-2">
-                  <ShieldAlert className="w-3 h-3" />
-                  SECURITY WARNING
-                </div>
-                <p className="text-[10px] text-muted-foreground leading-relaxed">
-                  Generated keys grant full system access for the specified duration. 
-                  Distribution should be limited to trusted operatives only.
-                </p>
-              </div>
-            </div>
-          </CyberCard>
-        </div>
-
-        {/* Keys List */}
-        <div className="lg:col-span-2">
-          <CyberCard title="ACTIVE_VECTORS" className="h-full min-h-[500px] flex flex-col">
-            <div className="flex-1 overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-primary/20 text-xs font-mono uppercase text-muted-foreground">
-                    <th className="p-4 font-normal">Key String</th>
-                    <th className="p-4 font-normal">User</th>
-                    <th className="p-4 font-normal">Type</th>
-                    <th className="p-4 font-normal">Status</th>
-                    <th className="p-4 font-normal">Created</th>
-                    <th className="p-4 font-normal text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5">
-                  {keys?.map((key) => (
-                    <tr key={key.id} className="group hover:bg-white/5 transition-colors font-mono text-sm">
-                      <td className="p-4 text-primary font-bold tracking-widest flex items-center gap-2">
-                        <Key className="w-3 h-3 opacity-50" />
-                        {key.key}
-                      </td>
-                      <td className="p-4">
-                        <span className="text-xs text-glow uppercase tracking-tighter">
-                          {(key as any).username || "---"}
-                        </span>
-                      </td>
-                      <td className="p-4 uppercase">
-                        <span className={`px-2 py-1 text-[10px] border ${
-                          key.type === 'permanent' 
-                            ? 'border-accent text-accent bg-accent/10' 
-                            : 'border-blue-500 text-blue-500 bg-blue-500/10'
-                        }`}>
-                          {key.type}
-                          {key.durationMinutes ? ` (${key.durationMinutes}m)` : ''}
-                        </span>
-                      </td>
-                      <td className="p-4">
-                        <span className={`flex items-center gap-2 ${key.isUsed ? 'text-red-500' : 'text-green-500'}`}>
-                          <div className={`w-2 h-2 rounded-full ${key.isUsed ? 'bg-red-500' : 'bg-green-500 animate-pulse'}`} />
-                          {key.isUsed ? 'DEPLETED' : 'ACTIVE'}
-                        </span>
-                      </td>
-                      <td className="p-4 text-muted-foreground text-xs">
-                        {key.createdAt && format(new Date(key.createdAt), "MM/dd HH:mm")}
-                      </td>
-                      <td className="p-4 text-right">
+          <TabsContent value="keys" className="mt-6 space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Generator Panel */}
+              <div className="lg:col-span-1 space-y-6">
+                <CyberCard title="KEY_GENERATOR" className="h-full">
+                  <div className="space-y-6">
+                    <div className="space-y-2">
+                      <label className="text-xs text-muted-foreground font-mono uppercase">Access Type</label>
+                      <div className="flex gap-2">
                         <button
-                          onClick={() => deleteKey.mutate(key.id)}
-                          className="text-muted-foreground hover:text-destructive transition-colors p-2"
-                          title="Revoke Key"
+                          onClick={() => setType("limited")}
+                          className={`flex-1 py-2 border text-xs font-mono uppercase transition-all ${
+                            type === "limited" 
+                              ? "border-primary bg-primary/20 text-primary" 
+                              : "border-muted-foreground/30 text-muted-foreground hover:border-primary/50"
+                          }`}
                         >
-                          <Trash2 className="w-4 h-4" />
+                          Temporary
                         </button>
-                      </td>
-                    </tr>
-                  ))}
-                  {!keys?.length && (
-                    <tr>
-                      <td colSpan={6} className="p-8 text-center text-muted-foreground italic">
-                        NO ACTIVE KEYS FOUND
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                        <button
+                          onClick={() => setType("permanent")}
+                          className={`flex-1 py-2 border text-xs font-mono uppercase transition-all ${
+                            type === "permanent" 
+                              ? "border-accent bg-accent/20 text-accent" 
+                              : "border-muted-foreground/30 text-muted-foreground hover:border-accent/50"
+                          }`}
+                        >
+                          Permanent
+                        </button>
+                      </div>
+                    </div>
+
+                    {type === "limited" && (
+                      <CyberInput
+                        label="DURATION (MINUTES)"
+                        type="number"
+                        value={duration}
+                        onChange={(e) => setDuration(e.target.value)}
+                      />
+                    )}
+
+                    <CyberButton 
+                      onClick={handleGenerate} 
+                      className="w-full"
+                      isLoading={generateKey.isPending}
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      MINT_KEY
+                    </CyberButton>
+
+                    <div className="p-4 border border-yellow-500/30 bg-yellow-500/5 mt-4">
+                      <div className="text-yellow-500 text-xs font-bold mb-1 flex items-center gap-2">
+                        <ShieldAlert className="w-3 h-3" />
+                        SECURITY WARNING
+                      </div>
+                      <p className="text-[10px] text-muted-foreground leading-relaxed">
+                        Generated keys grant full system access for the specified duration. 
+                        Distribution should be limited to trusted operatives only.
+                      </p>
+                    </div>
+                  </div>
+                </CyberCard>
+              </div>
+
+              {/* Keys List */}
+              <div className="lg:col-span-2">
+                <CyberCard title="ACTIVE_VECTORS" className="h-full min-h-[500px] flex flex-col">
+                  <div className="flex-1 overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-primary/20 text-xs font-mono uppercase text-muted-foreground">
+                          <th className="p-4 font-normal">Key String</th>
+                          <th className="p-4 font-normal">User</th>
+                          <th className="p-4 font-normal">Type</th>
+                          <th className="p-4 font-normal">Status</th>
+                          <th className="p-4 font-normal text-right">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {keys?.map((key) => (
+                          <tr key={key.id} className="group hover:bg-white/5 transition-colors font-mono text-sm">
+                            <td className="p-4 text-primary font-bold tracking-widest flex items-center gap-2">
+                              <Key className="w-3 h-3 opacity-50" />
+                              {key.key}
+                            </td>
+                            <td className="p-4">
+                              <span className="text-xs text-glow uppercase tracking-tighter">
+                                {(key as any).username || "---"}
+                              </span>
+                            </td>
+                            <td className="p-4 uppercase">
+                              <span className={`px-2 py-1 text-[10px] border ${
+                                key.type === 'permanent' 
+                                  ? 'border-accent text-accent bg-accent/10' 
+                                  : 'border-blue-500 text-blue-500 bg-blue-500/10'
+                              }`}>
+                                {key.type}
+                                {key.durationMinutes ? ` (${key.durationMinutes}m)` : ''}
+                              </span>
+                            </td>
+                            <td className="p-4">
+                              <span className={`flex items-center gap-2 ${key.isUsed ? 'text-red-500' : 'text-green-500'}`}>
+                                <div className={`w-2 h-2 rounded-full ${key.isUsed ? 'bg-red-500' : 'bg-green-500 animate-pulse'}`} />
+                                {key.isUsed ? 'DEPLETED' : 'ACTIVE'}
+                              </span>
+                            </td>
+                            <td className="p-4 text-right">
+                              <button
+                                onClick={() => deleteKey.mutate(key.id)}
+                                className="text-muted-foreground hover:text-destructive transition-colors p-2"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CyberCard>
+              </div>
             </div>
-          </CyberCard>
-        </div>
+          </TabsContent>
+
+          <TabsContent value="shop" className="mt-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <CyberCard title="MARKET_LISTING_GENERATOR">
+                <form onSubmit={(e) => {
+                  e.preventDefault();
+                  const formData = new FormData(e.currentTarget);
+                  createShopItem.mutate({
+                    name: formData.get('name'),
+                    description: formData.get('description'),
+                    type: formData.get('type'),
+                    price: Number(formData.get('price')),
+                    imageUrl: formData.get('imageUrl'),
+                  });
+                  (e.target as HTMLFormElement).reset();
+                }} className="space-y-4">
+                  <div className="grid grid-cols-1 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-mono text-primary/60 uppercase">Item_Name</label>
+                      <input name="name" className="w-full bg-black border border-primary/20 p-2 font-mono text-primary text-sm" required />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-mono text-primary/60 uppercase">Price_CR</label>
+                      <input name="price" type="number" className="w-full bg-black border border-primary/20 p-2 font-mono text-primary text-sm" required />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-mono text-primary/60 uppercase">Type</label>
+                      <select name="type" className="w-full bg-black border border-primary/20 p-2 font-mono text-primary text-sm" required>
+                        <option value="decoration">PROFILE_DECORATION</option>
+                        <option value="name_style">NAME_STYLER</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-mono text-primary/60 uppercase">Resource_URI (PNG/CSS)</label>
+                      <input name="imageUrl" className="w-full bg-black border border-primary/20 p-2 font-mono text-primary text-sm" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-mono text-primary/60 uppercase">Description</label>
+                      <textarea name="description" className="w-full bg-black border border-primary/20 p-2 font-mono text-primary text-sm h-24" />
+                    </div>
+                  </div>
+                  <CyberButton type="submit" disabled={createShopItem.isPending} className="w-full">DEPLOY_TO_MARKET</CyberButton>
+                </form>
+              </CyberCard>
+            </div>
+          </TabsContent>
+        </Tabs>
       </div>
     </Layout>
   );

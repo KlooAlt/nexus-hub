@@ -11,6 +11,7 @@ import Proxy from "@/pages/Proxy";
 import Chat from "@/pages/Chat";
 import History from "@/pages/History";
 import Admin from "@/pages/Admin";
+import Shop from "@/pages/Shop";
 import NotFound from "@/pages/not-found";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -51,6 +52,9 @@ function Router() {
       </Route>
       <Route path="/admin">
         <ProtectedRoute component={Admin} />
+      </Route>
+      <Route path="/shop">
+        <ProtectedRoute component={Shop} />
       </Route>
       <Route component={NotFound} />
     </Switch>
