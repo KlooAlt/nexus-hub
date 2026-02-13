@@ -243,7 +243,7 @@ const TerminalMessage = ({
  */
 export default function Chat() {
   const { user: currentUser } = useAuth();
-  const { messages, users, sendMessage } = useChat();
+  const { messages, users, sendMessage, deleteMessage } = useChat();
   const { toast } = useToast();
 
   // --- CHANNEL SELECTOR STATE ---
@@ -479,7 +479,7 @@ export default function Chat() {
 
   const activeChannelName = useMemo(() => {
     if (selectedGroupId) return groups.find((g: any) => g.id === selectedGroupId)?.name || "GROUP_NODE";
-    if (selectedRecipientId) return users?.find(u => u.id === selectedRecipientId)?.username || "PRIVATE_NODE";
+    if (selectedRecipientId) return users?.find((u: any) => u.id === selectedRecipientId)?.username || "PRIVATE_NODE";
     return "BROADCAST_HUB";
   }, [selectedGroupId, selectedRecipientId, groups, users]);
 
@@ -504,7 +504,7 @@ export default function Chat() {
                   </CyberButton>
                 </div>
                 <div className="space-y-2 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
-                  {users?.map(u => (
+                  {users?.filter((u: any) => u.id !== currentUser?.id).map((u: any) => (
                     <div key={u.id} className="flex items-center justify-between p-3 border border-primary/20 bg-primary/5 hover:bg-primary/10 transition-colors">
                       <div className="flex items-center gap-3">
                         <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_#22c55e]" />
