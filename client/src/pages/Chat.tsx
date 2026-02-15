@@ -242,8 +242,10 @@ const TerminalMessage = ({
  * ============================================================================
  */
 export default function Chat() {
-  const { user: currentUser } = useAuth();
-  const { messages, users, sendMessage, deleteMessage } = useChat();
+  const { messages, users, sendMessage } = useChat();
+  const deleteMessage = (id: number) => {
+    deleteMessageMutation.mutate(id);
+  };
   const { toast } = useToast();
 
   // --- CHANNEL SELECTOR STATE ---
@@ -285,24 +287,10 @@ export default function Chat() {
   const [logs, setLogs] = useState<SystemLogEntry[]>([]);
 
   // --- DATA FETCHING ---
-  const { data: groups = [] } = useQuery({ queryKey: ['/api/chat/groups'] });
+  const { data: groups = [] } = useQuery<any[]>({ queryKey: ['/api/chat/groups'] });
   const { data: userConfig, refetch: refetchConfig } = useQuery({
     queryKey: ['/api/auth/me'],
     queryFn: async () => (await fetch('/api/auth/me')).json()
-  });
-
-  // --- MUTATIONS ---
-  // Fix: Adding manual delete mutation since user reported it as undefined
-  const deleteMessageMutation = useMutation({
-    mutationFn: async (messageId: number) => {
-      const res = await fetch(`/api/chat/messages/${messageId}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error("Purge_Failed");
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/chat/messages'] });
-      pushLog("PURGE_SUCCESSFUL", "info");
-    }
   });
 
   const updateProfile = useMutation({
@@ -478,7 +466,7 @@ export default function Chat() {
   }, [messages, selectedRecipientId, selectedGroupId]);
 
   const activeChannelName = useMemo(() => {
-    if (selectedGroupId) return groups.find((g: any) => g.id === selectedGroupId)?.name || "GROUP_NODE";
+    if (selectedGroupId) return (groups as any[]).find((g: any) => g.id === selectedGroupId)?.name || "GROUP_NODE";
     if (selectedRecipientId) return users?.find((u: any) => u.id === selectedRecipientId)?.username || "PRIVATE_NODE";
     return "BROADCAST_HUB";
   }, [selectedGroupId, selectedRecipientId, groups, users]);
@@ -499,7 +487,7 @@ export default function Chat() {
               >
                 <div className="flex items-center justify-between mb-6">
                   <h2 className="font-display text-primary uppercase tracking-widest">Global_Directory</h2>
-                  <CyberButton variant="outline" size="icon" onClick={() => setShowEveryoneList(false)}>
+                  <CyberButton variant="primary" size="sm" onClick={() => setShowEveryoneList(false)}>
                     <X className="w-4 h-4" />
                   </CyberButton>
                 </div>
@@ -513,14 +501,14 @@ export default function Chat() {
                       <div className="flex gap-2">
                         <CyberButton 
                           size="sm" 
-                          variant="outline"
+                          variant="primary"
                           onClick={() => { selectPrivateNode(u.id); setShowEveryoneList(false); }}
                         >
                           MSG
                         </CyberButton>
                         <CyberButton 
                           size="sm" 
-                          variant="outline"
+                          variant="primary"
                           onClick={() => { selectPrivateNode(u.id); setShowEveryoneList(false); triggerNeuralCall(); }}
                         >
                           CALL
@@ -682,7 +670,7 @@ export default function Chat() {
             <div className="flex items-center gap-2">
               <CyberButton 
                 onClick={() => setShowEveryoneList(true)}
-                variant="outline" 
+                variant="primary" 
                 className="h-9 px-3 text-[10px] hidden sm:flex"
               >
                 <Users className="w-3.5 h-3.5 mr-2" /> DIRECTORY

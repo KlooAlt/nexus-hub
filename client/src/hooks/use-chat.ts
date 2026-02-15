@@ -53,5 +53,15 @@ export function useChat() {
     },
   });
 
-  return { messages, users, isLoadingMessages, isLoadingUsers, sendMessage };
+  const deleteMessage = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/chat/messages/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error("Purge_Failed");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.chat.list.path] });
+    }
+  });
+
+  return { messages, users, isLoadingMessages, isLoadingUsers, sendMessage, deleteMessage };
 }
