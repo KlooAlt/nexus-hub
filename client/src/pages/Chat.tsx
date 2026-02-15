@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { api } from "@shared/routes";
 import { motion, AnimatePresence } from "framer-motion";
 
 /**
@@ -242,7 +243,21 @@ const TerminalMessage = ({
  * ============================================================================
  */
 export default function Chat() {
+  const { user: currentUser } = useAuth();
   const { messages, users, sendMessage } = useChat();
+  
+  const deleteMessageMutation = useMutation({
+    mutationFn: async (messageId: number) => {
+      const res = await fetch(`/api/chat/messages/${messageId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error("Purge_Failed");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/messages"] });
+      pushLog("PURGE_SUCCESSFUL", "info");
+    }
+  });
+
   const deleteMessage = (id: number) => {
     deleteMessageMutation.mutate(id);
   };
@@ -487,7 +502,7 @@ export default function Chat() {
               >
                 <div className="flex items-center justify-between mb-6">
                   <h2 className="font-display text-primary uppercase tracking-widest">Global_Directory</h2>
-                  <CyberButton variant="primary" size="sm" onClick={() => setShowEveryoneList(false)}>
+                  <CyberButton variant="primary" onClick={() => setShowEveryoneList(false)} className="px-2 py-1 text-xs">
                     <X className="w-4 h-4" />
                   </CyberButton>
                 </div>
@@ -500,16 +515,16 @@ export default function Chat() {
                       </div>
                       <div className="flex gap-2">
                         <CyberButton 
-                          size="sm" 
                           variant="primary"
                           onClick={() => { selectPrivateNode(u.id); setShowEveryoneList(false); }}
+                          className="px-2 py-1 text-[10px]"
                         >
                           MSG
                         </CyberButton>
                         <CyberButton 
-                          size="sm" 
                           variant="primary"
                           onClick={() => { selectPrivateNode(u.id); setShowEveryoneList(false); triggerNeuralCall(); }}
+                          className="px-2 py-1 text-[10px]"
                         >
                           CALL
                         </CyberButton>
@@ -607,14 +622,14 @@ export default function Chat() {
                     <Hash className="w-3 h-3" /> Group_Partitions
                   </div>
                   <div className="px-2 space-y-1 mb-6">
-                    {groups.map((g: any) => (
-                      <CyberSidebarNode 
-                        key={g.id} 
-                        label={g.name} 
-                        isActive={selectedGroupId === g.id} 
-                        onClick={() => selectGroupNode(g.id)} 
-                      />
-                    ))}
+                  {(groups as any[]).map((g: any) => (
+                    <CyberSidebarNode 
+                      key={g.id} 
+                      label={g.name} 
+                      isActive={selectedGroupId === g.id} 
+                      onClick={() => selectGroupNode(g.id)} 
+                    />
+                  ))}
                   </div>
                 </div>
 
