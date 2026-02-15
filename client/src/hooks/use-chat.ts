@@ -9,7 +9,8 @@ export function useChat() {
     queryFn: async () => {
       const res = await fetch(api.chat.list.path);
       if (!res.ok) throw new Error("Failed to fetch messages");
-      return api.chat.list.responses[200].parse(await res.json());
+      const data = await res.json();
+      return api.chat.list.responses[200].parse(data);
     },
     refetchInterval: 3000, // Poll every 3 seconds for simple real-time feel
   });

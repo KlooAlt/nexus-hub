@@ -12,7 +12,7 @@ export function useAuth() {
       const res = await fetch(api.auth.me.path);
       if (res.status === 401) return null;
       if (!res.ok) throw new Error("Failed to fetch user");
-      return api.auth.me.responses[200].parse(await res.json());
+      return api.auth.me.responses[200].parse(data);
     },
     retry: false,
   });
@@ -29,7 +29,8 @@ export function useAuth() {
         if (res.status === 401) throw new Error("Invalid Serial Key");
         throw new Error("Login failed");
       }
-      return api.auth.login.responses[200].parse(await res.json());
+      const data = await res.json();
+      return api.auth.login.responses[200].parse(data);
     },
     onSuccess: (data) => {
       queryClient.setQueryData([api.auth.me.path], data);
