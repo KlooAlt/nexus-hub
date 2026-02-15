@@ -1,6 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type LoginRequest, type User } from "@shared/routes";
+import { api } from "@shared/routes";
+import { type User, type AccessKey } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
+import { z } from "zod";
+
+type LoginRequest = z.infer<typeof api.auth.login.input>;
 
 export function useAuth() {
   const queryClient = useQueryClient();
@@ -12,6 +16,7 @@ export function useAuth() {
       const res = await fetch(api.auth.me.path);
       if (res.status === 401) return null;
       if (!res.ok) throw new Error("Failed to fetch user");
+      const data = await res.json();
       return api.auth.me.responses[200].parse(data);
     },
     retry: false,

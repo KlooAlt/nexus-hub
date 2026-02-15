@@ -205,8 +205,8 @@ export async function registerRoutes(
       recipientId: input.recipientId,
       groupId: input.groupId,
       content: input.content,
-      mediaUrl: (input as any).mediaUrl,
-      mediaType: (input as any).mediaType
+      mediaUrl: (input as any).mediaUrl || (input as any).imageUrl,
+      mediaType: (input as any).mediaType || ((input as any).imageUrl ? 'image' : null)
     });
     res.status(201).json(message);
   });

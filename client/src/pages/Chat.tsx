@@ -544,16 +544,37 @@ export default function Chat() {
               className="w-full lg:w-80 flex flex-col gap-4 z-40"
             >
               <div className="cyber-box flex-1 flex flex-col p-0 overflow-hidden bg-black/90 border-primary/20 backdrop-blur-3xl shadow-2xl">
-
                 {/* Header Stats */}
                 <div className="p-6 border-b border-primary/20 bg-primary/5">
                   <div className="text-[10px] font-mono text-primary/40 flex items-center gap-2 mb-2">
                     <span className="animate-pulse">01</span> <span>10</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <h2 className="font-display text-xs tracking-[0.4em] uppercase text-primary">Private_Nodes</h2>
+                    <h2 className="font-display text-xs tracking-[0.4em] uppercase text-primary">Network_Directories</h2>
                     <UserPlus className="w-4 h-4 text-primary/60 cursor-pointer hover:text-white" />
                   </div>
+                </div>
+
+                {/* Directory Selector */}
+                <div className="flex border-b border-primary/10">
+                  <button 
+                    onClick={() => setActiveTab('NODES')}
+                    className={cn(
+                      "flex-1 py-3 text-[10px] font-mono uppercase tracking-widest transition-colors",
+                      activeTab === 'NODES' ? "bg-primary/10 text-primary border-b-2 border-primary" : "text-primary/40 hover:text-primary/60"
+                    )}
+                  >
+                    Nodes
+                  </button>
+                  <button 
+                    onClick={() => setActiveTab('GROUPS')}
+                    className={cn(
+                      "flex-1 py-3 text-[10px] font-mono uppercase tracking-widest transition-colors",
+                      activeTab === 'GROUPS' ? "bg-primary/10 text-primary border-b-2 border-primary" : "text-primary/40 hover:text-primary/60"
+                    )}
+                  >
+                    Clusters
+                  </button>
                 </div>
 
                 {/* Filter Search */}

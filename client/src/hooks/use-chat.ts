@@ -1,5 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type CreateMessageRequest } from "@shared/routes";
+import { api } from "@shared/routes";
+import { z } from "zod";
+
+type CreateMessageRequest = z.infer<typeof api.chat.send.input>;
 
 export function useChat() {
   const queryClient = useQueryClient();
@@ -20,7 +23,8 @@ export function useChat() {
     queryFn: async () => {
       const res = await fetch(api.chat.users.path);
       if (!res.ok) throw new Error("Failed to fetch users");
-      return api.chat.users.responses[200].parse(await res.json());
+      const data = await res.json();
+      return api.chat.users.responses[200].parse(data);
     },
     refetchInterval: 10000,
   });
