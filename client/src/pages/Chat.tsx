@@ -269,6 +269,10 @@ export default function Chat() {
   const [isCallingGroup, setIsCallingGroup] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showEveryoneList, setShowEveryoneList] = useState(false);
+  const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
+  const [showJoinGroupModal, setShowJoinGroupModal] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [joinGroupCode, setJoinGroupCode] = useState("");
 
   // --- UI & SEARCH STATE ---
   const [searchTerm, setSearchTerm] = useState("");
@@ -315,6 +319,48 @@ export default function Chat() {
       body: JSON.stringify(s) 
     }),
     onSuccess: () => refetchConfig()
+  });
+
+  const createGroupMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const res = await fetch('/api/chat/groups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      });
+      if (!res.ok) throw new Error("Failed to create group");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/chat/groups'] });
+      setShowCreateGroupModal(false);
+      setNewGroupName("");
+      pushLog("GROUP_CREATED", "info");
+      toast({ title: "GROUP_INITIALIZED", description: "New cluster online." });
+    }
+  });
+
+  const joinGroupMutation = useMutation({
+    mutationFn: async (code: string) => {
+      const res = await fetch('/api/chat/groups/join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inviteCode: code })
+      });
+      if (!res.ok) throw new Error("Invalid group code");
+      return res.json();
+    },
+    onSuccess: (group) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/chat/groups'] });
+      setShowJoinGroupModal(false);
+      setJoinGroupCode("");
+      selectGroupNode(group.id);
+      pushLog(`GROUP_JOINED: ${group.name}`, "info");
+      toast({ title: "CLUSTER_ACCESSED", description: `Joined ${group.name}` });
+    },
+    onError: () => {
+      toast({ title: "INVALID_CODE", description: "Cluster code not found.", variant: "destructive" });
+    }
   });
 
   /**
@@ -539,6 +585,70 @@ export default function Chat() {
           )}
         </AnimatePresence>
 
+        {/* CREATE GROUP MODAL */}
+        <AnimatePresence>
+          {showCreateGroupModal && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+              <motion.div 
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="cyber-box w-full max-w-md bg-black border-primary p-6"
+              >
+                <h2 className="font-display text-primary uppercase tracking-widest mb-6">Initialize_Cluster</h2>
+                <div className="flex flex-col gap-4">
+                  <CyberInput 
+                    value={newGroupName}
+                    onChange={(e) => setNewGroupName(e.target.value)}
+                    placeholder="Cluster_Name..."
+                    className="h-10 text-xs"
+                  />
+                  <div className="flex gap-2">
+                    <CyberButton variant="primary" onClick={() => createGroupMutation.mutate(newGroupName)} disabled={!newGroupName.trim()} className="flex-1">
+                      CREATE
+                    </CyberButton>
+                    <CyberButton variant="secondary" onClick={() => setShowCreateGroupModal(false)} className="flex-1">
+                      CANCEL
+                    </CyberButton>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* JOIN GROUP MODAL */}
+        <AnimatePresence>
+          {showJoinGroupModal && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+              <motion.div 
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="cyber-box w-full max-w-md bg-black border-primary p-6"
+              >
+                <h2 className="font-display text-primary uppercase tracking-widest mb-6">Access_Cluster</h2>
+                <div className="flex flex-col gap-4">
+                  <CyberInput 
+                    value={joinGroupCode}
+                    onChange={(e) => setJoinGroupCode(e.target.value)}
+                    placeholder="Cluster_Code..."
+                    className="h-10 text-xs"
+                  />
+                  <div className="flex gap-2">
+                    <CyberButton variant="primary" onClick={() => joinGroupMutation.mutate(joinGroupCode)} disabled={!joinGroupCode.trim()} className="flex-1">
+                      JOIN
+                    </CyberButton>
+                    <CyberButton variant="secondary" onClick={() => setShowJoinGroupModal(false)} className="flex-1">
+                      CANCEL
+                    </CyberButton>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
         {/* ==================================================================
             SIDEBAR: NETWORK_DIRECTORIES
             ================================================================== */}
@@ -556,7 +666,14 @@ export default function Chat() {
                   </div>
                   <div className="flex items-center justify-between">
                     <h2 className="font-display text-xs tracking-[0.4em] uppercase text-primary">Network_Directories</h2>
-                    <UserPlus className="w-4 h-4 text-primary/60 cursor-pointer hover:text-white" />
+                    <div className="flex gap-2">
+                      <button onClick={() => setShowCreateGroupModal(true)} className="p-1 hover:text-accent transition-colors" title="Create Group">
+                        <Plus className="w-4 h-4 text-primary/60 hover:text-accent" />
+                      </button>
+                      <button onClick={() => setShowJoinGroupModal(true)} className="p-1 hover:text-accent transition-colors" title="Join Group">
+                        <UserPlus className="w-4 h-4 text-primary/60 hover:text-accent" />
+                      </button>
+                    </div>
                   </div>
                 </div>
 
