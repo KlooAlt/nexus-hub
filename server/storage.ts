@@ -102,53 +102,38 @@ export class DatabaseStorage implements IStorage {
     await db.delete(searchHistory).where(eq(searchHistory.userId, userId));
   }
 
-  // Chat
+  // Chat - Return ALL messages the user can see (public + private DMs + group messages)
   async getMessages(currentUserId: number, recipientId?: number, groupId?: number): Promise<(Message & { senderName: string })[]> {
-    if (groupId) {
-      return await db.select({
-        id: messages.id,
-        senderId: messages.senderId,
-        recipientId: messages.recipientId,
-        groupId: messages.groupId,
-        content: messages.content,
-        mediaUrl: messages.mediaUrl,
-        mediaType: messages.mediaType,
-        createdAt: messages.createdAt,
-        senderName: users.username,
-      })
-      .from(messages)
-      .innerJoin(users, eq(messages.senderId, users.id))
-      .where(eq(messages.groupId, groupId))
-      .orderBy(messages.createdAt);
-    }
-
-    if (recipientId) {
-      return await db.select({
-        id: messages.id,
-        senderId: messages.senderId,
-        recipientId: messages.recipientId,
-        groupId: messages.groupId,
-        content: messages.content,
-        mediaUrl: messages.mediaUrl,
-        mediaType: messages.mediaType,
-        createdAt: messages.createdAt,
-        senderName: users.username,
-      })
-      .from(messages)
-      .innerJoin(users, eq(messages.senderId, users.id))
-      .where(
+    return await db.select({
+      id: messages.id,
+      senderId: messages.senderId,
+      recipientId: messages.recipientId,
+      groupId: messages.groupId,
+      content: messages.content,
+      mediaUrl: messages.mediaUrl,
+      mediaType: messages.mediaType,
+      createdAt: messages.createdAt,
+      senderName: users.username,
+    })
+    .from(messages)
+    .innerJoin(users, eq(messages.senderId, users.id))
+    .where(
+      or(
+        // Public broadcast messages
+        sql`${messages.recipientId} IS NULL AND ${messages.groupId} IS NULL`,
+        // Private DMs where user is sender or recipient
         and(
           sql`${messages.groupId} IS NULL`,
           or(
-            and(eq(messages.senderId, currentUserId), eq(messages.recipientId, recipientId)),
-            and(eq(messages.senderId, recipientId), eq(messages.recipientId, currentUserId))
+            eq(messages.senderId, currentUserId),
+            eq(messages.recipientId, currentUserId)
           )
-        )
+        ),
+        // Group messages where user is a member
+        sql`${messages.groupId} IN (SELECT group_id FROM group_chat_members WHERE user_id = ${currentUserId})`
       )
-      .orderBy(messages.createdAt);
-    } 
-    
-    return await this.getPublicMessages();
+    )
+    .orderBy(messages.createdAt);
   }
 
   async getPublicMessages(): Promise<(Message & { senderName: string })[]> {

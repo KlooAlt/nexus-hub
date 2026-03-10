@@ -464,7 +464,9 @@ export default function Chat() {
    * --------------------------------------------------------------------------
    */
   useEffect(() => {
-    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    setTimeout(() => {
+      chatBottomRef.current?.scrollIntoView({ behavior: "auto" });
+    }, 0);
 
     if (messages?.length) {
       const last = messages[messages.length - 1];
@@ -478,7 +480,7 @@ export default function Chat() {
         }
       }
     }
-  }, [messages, selectedRecipientId, selectedGroupId]);
+  }, [messages, selectedRecipientId, selectedGroupId, unifiedMessages.length]);
 
   const activeChannelName = useMemo(() => {
     if (selectedGroupId) return (groups as any[]).find((g: any) => g.id === selectedGroupId)?.name || "GROUP_NODE";
