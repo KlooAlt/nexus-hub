@@ -123,6 +123,9 @@ export const api = {
         content: z.string(),
         recipientId: z.number().optional(),
         groupId: z.number().optional(),
+        mediaUrl: z.string().optional().nullable(),
+        mediaType: z.string().optional().nullable(),
+        replyToId: z.number().optional().nullable(),
       }),
       responses: {
         201: z.custom<typeof messages.$inferSelect>(),

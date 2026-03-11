@@ -205,8 +205,28 @@ export async function registerRoutes(
       recipientId: input.recipientId,
       groupId: input.groupId,
       content: input.content,
-      mediaUrl: (input as any).mediaUrl || (input as any).imageUrl,
-      mediaType: (input as any).mediaType || ((input as any).imageUrl ? 'image' : null)
+      mediaUrl: input.mediaUrl ?? null,
+      mediaType: input.mediaType ?? null,
+    });
+    res.status(201).json(message);
+  });
+
+  app.delete('/api/chat/messages/:id', requireAuth, async (req, res) => {
+    const id = Number(req.params.id);
+    await db.delete(messages).where(and(eq(messages.id, id), eq(messages.senderId, req.session.userId!)));
+    res.status(204).send();
+  });
+
+  // Soundboard broadcast - sends an SFX signal message to a channel so others auto-play it
+  app.post('/api/chat/soundboard/play', requireAuth, async (req, res) => {
+    const { soundUrl, soundName, recipientId, groupId } = req.body;
+    const message = await storage.createMessage({
+      senderId: req.session.userId!,
+      recipientId: recipientId ?? null,
+      groupId: groupId ?? null,
+      content: `[SFX:${soundName}]`,
+      mediaUrl: soundUrl,
+      mediaType: 'sfx',
     });
     res.status(201).json(message);
   });

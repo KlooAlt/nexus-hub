@@ -1,8 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@shared/routes";
-import { z } from "zod";
-
-type CreateMessageRequest = z.infer<typeof api.chat.send.input>;
 
 export function useChat() {
   const queryClient = useQueryClient();
@@ -12,10 +9,9 @@ export function useChat() {
     queryFn: async () => {
       const res = await fetch(api.chat.list.path);
       if (!res.ok) throw new Error("Failed to fetch messages");
-      const data = await res.json();
-      return api.chat.list.responses[200].parse(data);
+      return res.json();
     },
-    refetchInterval: 3000, // Poll every 3 seconds for simple real-time feel
+    refetchInterval: 3000,
   });
 
   const { data: users, isLoading: isLoadingUsers } = useQuery({
@@ -23,30 +19,27 @@ export function useChat() {
     queryFn: async () => {
       const res = await fetch(api.chat.users.path);
       if (!res.ok) throw new Error("Failed to fetch users");
-      const data = await res.json();
-      return api.chat.users.responses[200].parse(data);
+      return res.json();
     },
     refetchInterval: 10000,
   });
 
   const sendMessage = useMutation({
-    mutationFn: async (
-      data: CreateMessageRequest & {
-        imageUrl?: string;   // added: image URL or base64 string
-        replyToId?: string;  // added: reply support
-      }
-    ) => {
+    mutationFn: async (data: {
+      content: string;
+      recipientId?: number;
+      groupId?: number;
+      mediaUrl?: string | null;
+      mediaType?: string | null;
+      replyToId?: number | null;
+    }) => {
       const res = await fetch(api.chat.send.path, {
         method: api.chat.send.method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...data,
-          imageUrl: data.imageUrl ?? null,
-          replyToId: data.replyToId ?? null,
-        }),
+        body: JSON.stringify(data),
       });
       if (!res.ok) throw new Error("Failed to send message");
-      return api.chat.send.responses[201].parse(await res.json());
+      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.chat.list.path] });
@@ -56,7 +49,7 @@ export function useChat() {
   const deleteMessage = useMutation({
     mutationFn: async (id: number) => {
       const res = await fetch(`/api/chat/messages/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error("Purge_Failed");
+      if (!res.ok) throw new Error("Delete failed");
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.chat.list.path] });
