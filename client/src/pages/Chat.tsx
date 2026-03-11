@@ -229,6 +229,8 @@ export default function Chat() {
   const [sounds, setSounds] = useState<SoundEntry[]>(DEFAULT_SOUNDS);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [isRecording, setIsRecording] = useState(false);
+  const [callSoundboardOpen, setCallSoundboardOpen] = useState(false);
 
   // --- LOGS ---
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -247,6 +249,9 @@ export default function Chat() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const soundFileInputRef = useRef<HTMLInputElement>(null);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const callTargetIdRef = useRef<number | null>(null);
+  const autoDeclineTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const hasInitializedSfxRef = useRef(false);
 
   // --- DATA FETCHING ---
   const { data: groups = [] } = useQuery<any[]>({ queryKey: ['/api/chat/groups'] });
@@ -329,20 +334,33 @@ export default function Chat() {
   // AUTO-PLAY SFX FROM OTHER USERS
   // ============================================================
   const lastSfxIdRef = useRef<number>(0);
+
+  // Initialize lastSfxIdRef to current max message ID on first load (so we don't replay old sounds)
   useEffect(() => {
-    if (!unifiedMessages.length) return;
-    const sfxMsgs = unifiedMessages.filter(m => m.mediaType === 'sfx' && m.senderId !== currentUser?.id);
+    if (!messages || hasInitializedSfxRef.current) return;
+    hasInitializedSfxRef.current = true;
+    const maxId = messages.reduce((max: number, m: any) => Math.max(max, m.id || 0), 0);
+    lastSfxIdRef.current = maxId;
+  }, [messages]);
+
+  // Watch ALL messages for SFX (not just current channel) so sounds fire regardless of active tab
+  useEffect(() => {
+    if (!messages || !hasInitializedSfxRef.current) return;
+    const sfxMsgs = (messages as any[]).filter((m: any) => m.mediaType === 'sfx' && m.senderId !== currentUser?.id);
     const newest = sfxMsgs[sfxMsgs.length - 1];
     if (newest && newest.id > lastSfxIdRef.current) {
       lastSfxIdRef.current = newest.id;
       if (newest.mediaUrl) {
         const a = new Audio(newest.mediaUrl);
-        a.volume = 0.7;
-        a.play().catch(() => {});
+        a.volume = 0.75;
+        a.play().catch(() => {
+          // Autoplay blocked — show toast instead
+          pushLog(`SFX_BLOCKED (autoplay): ${newest.content}`, 'warn');
+        });
         pushLog(`SFX_RECEIVED: ${newest.content}`, 'info');
       }
     }
-  }, [unifiedMessages]);
+  }, [messages]);
 
   // ============================================================
   // FILE UPLOAD HANDLER
@@ -458,6 +476,7 @@ export default function Chat() {
     setCallTargetName(targetName);
     setCallState('requesting');
     setIsVideoOn(withVideo);
+    callTargetIdRef.current = targetId;
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: withVideo });
@@ -552,7 +571,20 @@ export default function Chat() {
     }
   };
 
-  const endCall = () => {
+  const endCall = (fromDecline = false) => {
+    // If we're the callee and declining, notify the caller
+    if (callState === 'incoming' && incomingCall && !fromDecline) {
+      fetch('/api/chat/voice/decline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipientId: incomingCall.fromId })
+      }).catch(() => {});
+    }
+    if (autoDeclineTimerRef.current) {
+      clearTimeout(autoDeclineTimerRef.current);
+      autoDeclineTimerRef.current = null;
+    }
+    callTargetIdRef.current = null;
     stopAllCallMedia();
     setCallState('idle');
     setIncomingCall(null);
@@ -607,50 +639,98 @@ export default function Chat() {
   // AUDIO RECORDING (VOICE MESSAGE)
   // ============================================================
   const startVoiceRecord = async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    recorderRef.current = new MediaRecorder(stream);
-    chunksRef.current = [];
-    recorderRef.current.ondataavailable = e => chunksRef.current.push(e.data);
-    recorderRef.current.onstop = () => {
-      const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        sendMessage.mutate({
-          content: '[VOICE_MESSAGE]',
-          recipientId: selectedRecipientId ?? undefined,
-          groupId: selectedGroupId ?? undefined,
-          mediaUrl: reader.result as string,
-          mediaType: 'audio',
-        } as any);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recorderRef.current = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg' });
+      chunksRef.current = [];
+      recorderRef.current.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+      recorderRef.current.onstop = () => {
+        stream.getTracks().forEach(t => t.stop());
+        if (chunksRef.current.length === 0) return;
+        const blob = new Blob(chunksRef.current, { type: recorderRef.current?.mimeType || 'audio/webm' });
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          sendMessage.mutate({
+            content: '[VOICE_MESSAGE]',
+            recipientId: selectedRecipientId ?? undefined,
+            groupId: selectedGroupId ?? undefined,
+            mediaUrl: reader.result as string,
+            mediaType: 'audio',
+          } as any);
+          pushLog("VOICE_MESSAGE_SENT", 'info');
+        };
+        reader.readAsDataURL(blob);
       };
-      reader.readAsDataURL(blob);
-      stream.getTracks().forEach(t => t.stop());
-    };
-    recorderRef.current.start();
-    pushLog("VOICE_RECORDING_STARTED", 'warn');
+      recorderRef.current.start(100); // collect data every 100ms
+      setIsRecording(true);
+      pushLog("VOICE_RECORDING_STARTED", 'warn');
+    } catch {
+      toast({ title: "MIC_DENIED", description: "Microphone access required.", variant: "destructive" });
+    }
+  };
+
+  const stopVoiceRecord = () => {
+    if (recorderRef.current && recorderRef.current.state === 'recording') {
+      recorderRef.current.stop();
+    }
+    setIsRecording(false);
   };
 
   // ============================================================
-  // POLL FOR INCOMING CALLS
+  // POLL FOR INCOMING CALLS + SIGNALS
   // ============================================================
   useEffect(() => {
     if (callState !== 'idle') return;
     const interval = setInterval(async () => {
       try {
         const res = await fetch('/api/chat/voice/poll');
-        const signals: any[] = await res.json();
-        for (const sig of signals) {
+        const sigs: any[] = await res.json();
+        for (const sig of sigs) {
           if (sig.type === 'offer') {
-            const callerName = users?.find(u => u.id === sig.from)?.username || `User_${sig.from}`;
+            const callerName = users?.find((u: any) => u.id === sig.from)?.username || `User_${sig.from}`;
             setIncomingCall({ fromId: sig.from, fromName: callerName, offer: sig.offer });
             setCallState('incoming');
             pushLog(`INCOMING_CALL: ${callerName}`, 'warn');
+            // Auto-decline after 30 seconds if not answered
+            if (autoDeclineTimerRef.current) clearTimeout(autoDeclineTimerRef.current);
+            autoDeclineTimerRef.current = setTimeout(() => {
+              pushLog('AUTO_DECLINED (timeout)', 'warn');
+              setCallState(cs => cs === 'incoming' ? 'idle' : cs);
+              setIncomingCall(ic => {
+                if (ic) {
+                  fetch('/api/chat/voice/decline', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ recipientId: ic.fromId })
+                  }).catch(() => {});
+                }
+                return null;
+              });
+            }, 30000);
           }
         }
       } catch {}
-    }, 3000);
+    }, 2000);
     return () => clearInterval(interval);
   }, [callState, users]);
+
+  // Poll for decline/answer signals when we are the caller (requesting state)
+  useEffect(() => {
+    if (callState !== 'requesting') return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch('/api/chat/voice/poll');
+        const sigs: any[] = await res.json();
+        for (const sig of sigs) {
+          if (sig.type === 'decline') {
+            toast({ title: "CALL_DECLINED", description: "They rejected the connection.", variant: "destructive" });
+            endCall(true);
+          }
+        }
+      } catch {}
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [callState]);
 
   // ============================================================
   // AUTO-SCROLL
@@ -698,7 +778,7 @@ export default function Chat() {
                   <button onClick={acceptCall} className="flex-1 py-3 bg-green-600 border border-green-400 text-white font-display tracking-widest uppercase hover:bg-green-500 transition-colors flex items-center justify-center gap-2">
                     <Phone className="w-5 h-5" /> Accept
                   </button>
-                  <button onClick={endCall} className="flex-1 py-3 bg-red-700 border border-red-500 text-white font-display tracking-widest uppercase hover:bg-red-600 transition-colors flex items-center justify-center gap-2">
+                  <button onClick={() => endCall()} className="flex-1 py-3 bg-red-700 border border-red-500 text-white font-display tracking-widest uppercase hover:bg-red-600 transition-colors flex items-center justify-center gap-2">
                     <PhoneOff className="w-5 h-5" /> Decline
                   </button>
                 </div>
@@ -731,14 +811,14 @@ export default function Chat() {
                       <div className="text-center">
                         <div className="font-display text-3xl text-primary tracking-[0.6em] uppercase">{callTargetName}</div>
                         <div className="text-[10px] font-mono text-primary/40 mt-3 tracking-widest uppercase">
-                          {callState === 'requesting' ? '◌ REQUESTING CONNECTION...' : `◉ CONNECTED — ${Math.floor(callTime / 60)}:${(callTime % 60).toString().padStart(2, '0')}`}
+                          {callState === 'requesting' ? '◌ RINGING...' : `◉ CONNECTED — ${Math.floor(callTime / 60)}:${(callTime % 60).toString().padStart(2, '0')}`}
                         </div>
                       </div>
                     </div>
                   )}
                   <div className="absolute top-4 left-4 flex items-center gap-2 bg-black/60 border border-primary/30 px-3 py-1 text-[10px] font-mono text-primary">
                     {callState === 'requesting' ? (
-                      <><span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />REQUESTING...</>
+                      <><span className="w-2 h-2 rounded-full bg-yellow-400 animate-ping" />RINGING...</>
                     ) : (
                       <><span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />LIVE {Math.floor(callTime / 60)}:{(callTime % 60).toString().padStart(2, '0')}</>
                     )}
@@ -746,28 +826,58 @@ export default function Chat() {
                 </div>
               </div>
 
+              {/* Soundboard in call (collapsible) */}
+              <AnimatePresence>
+                {callSoundboardOpen && (
+                  <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }}
+                    className="bg-black/95 border-t border-primary/20 overflow-hidden">
+                    <div className="p-4">
+                      <div className="text-[8px] font-mono text-primary/40 mb-3 uppercase tracking-widest">Soundboard — click to broadcast</div>
+                      <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5">
+                        {sounds.map(s => (
+                          <button key={s.id} onClick={() => handlePlaySound(s)}
+                            className="p-2 border border-primary/20 bg-primary/5 hover:bg-primary/25 hover:border-primary/60 text-[8px] font-mono uppercase transition-all truncate">
+                            {s.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               {/* Call controls */}
-              <div className="h-32 bg-black border-t border-primary/20 flex items-center justify-center gap-8">
+              <div className="h-32 bg-black border-t border-primary/20 flex items-center justify-center gap-6">
                 <button
                   onClick={toggleMute}
                   className={cn("w-14 h-14 rounded-full flex items-center justify-center border-2 transition-all", isMuted ? "bg-red-600 border-red-400" : "border-white/20 hover:border-primary")}
+                  title={isMuted ? "Unmute" : "Mute"}
                 >
                   {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
                 </button>
                 <button
                   onClick={toggleCamera}
                   className={cn("w-14 h-14 rounded-full flex items-center justify-center border-2 transition-all", isVideoOn ? "bg-primary border-primary text-black" : "border-white/20 hover:border-primary")}
+                  title={isVideoOn ? "Turn off camera" : "Turn on camera"}
                 >
                   {isVideoOn ? <Video className="w-6 h-6" /> : <VideoOff className="w-6 h-6" />}
                 </button>
                 <button
                   onClick={shareScreen}
                   className={cn("w-14 h-14 rounded-full flex items-center justify-center border-2 transition-all", isSharingScreen ? "bg-accent border-accent text-black" : "border-white/20 hover:border-accent")}
+                  title="Share screen"
                 >
                   <MonitorUp className="w-6 h-6" />
                 </button>
                 <button
-                  onClick={endCall}
+                  onClick={() => setCallSoundboardOpen(v => !v)}
+                  className={cn("w-14 h-14 rounded-full flex items-center justify-center border-2 transition-all", callSoundboardOpen ? "bg-primary/20 border-primary" : "border-white/20 hover:border-primary")}
+                  title="Soundboard"
+                >
+                  <Volume2 className="w-6 h-6" />
+                </button>
+                <button
+                  onClick={() => endCall()}
                   className="px-10 h-14 bg-red-700 border-2 border-red-500 flex items-center gap-3 font-display tracking-widest uppercase hover:bg-red-600 transition-colors"
                 >
                   <PhoneOff className="w-6 h-6" /> End
@@ -1061,8 +1171,18 @@ export default function Chat() {
                 <Plus className="w-5 h-5" />
               </button>
 
-              <button type="button" onMouseDown={startVoiceRecord} onMouseUp={() => recorderRef.current?.stop()}
-                className="w-10 h-10 border border-primary/20 text-primary hover:bg-primary/10 flex items-center justify-center flex-shrink-0 transition-all"
+              <button type="button"
+                onMouseDown={startVoiceRecord}
+                onMouseUp={stopVoiceRecord}
+                onMouseLeave={stopVoiceRecord}
+                onTouchStart={startVoiceRecord}
+                onTouchEnd={stopVoiceRecord}
+                className={cn(
+                  "w-10 h-10 border flex items-center justify-center flex-shrink-0 transition-all",
+                  isRecording
+                    ? "border-red-500 bg-red-500/20 text-red-400 animate-pulse"
+                    : "border-primary/20 text-primary hover:bg-primary/10"
+                )}
                 title="Hold to record voice message">
                 <Mic className="w-4 h-4" />
               </button>

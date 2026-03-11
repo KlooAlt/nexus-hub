@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { CyberInput } from "@/components/CyberInput";
 import { CyberButton } from "@/components/CyberButton";
@@ -11,10 +11,11 @@ export default function Login() {
   const { login, isLoggingIn, user } = useAuth();
   const [, setLocation] = useLocation();
 
-  if (user) {
-    setLocation("/proxy");
-    return null;
-  }
+  useEffect(() => {
+    if (user) setLocation("/proxy");
+  }, [user]);
+
+  if (user) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

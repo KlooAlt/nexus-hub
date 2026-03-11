@@ -357,6 +357,14 @@ export async function registerRoutes(
     res.json({ success: true });
   });
 
+  app.post('/api/chat/voice/decline', requireAuth, (req, res) => {
+    const { recipientId } = req.body;
+    const s = signals.get(recipientId) || [];
+    s.push({ type: 'decline', from: req.session.userId });
+    signals.set(recipientId, s);
+    res.json({ success: true });
+  });
+
   app.get('/api/chat/voice/poll', requireAuth, (req, res) => {
     const userId = req.session.userId!;
     const s = signals.get(userId) || [];
@@ -371,33 +379,71 @@ export async function registerRoutes(
       if (!targetUrl) return res.status(400).send("Missing URL");
 
       // Validate URL
-      new URL(targetUrl); // Throws if invalid
+      let parsed: URL;
+      try { parsed = new URL(targetUrl); } catch { return res.status(400).send("Invalid URL"); }
 
-      // Simple fetch proxy
       const response = await fetch(targetUrl, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+          'Upgrade-Insecure-Requests': '1',
+        },
+        redirect: 'follow',
       });
-      
-      const contentType = response.headers.get('content-type');
-      const text = await response.text();
-      
-      // Basic rewriting (Very primitive)
-      // Ideally we'd use a robust rewriter, but for this MVP:
-      // We just pass the HTML. Images/Assets might break if they are relative paths.
-      // A full proxy is complex. We'll do a simple "view source" style or basic render.
-      // To make it slightly better, we could inject a base tag.
-      
-      let processedHtml = text;
-      if (contentType?.includes('text/html')) {
-        const baseUrl = new URL(targetUrl).origin;
-        // Inject base tag to fix relative links
-        processedHtml = processedHtml.replace('<head>', `<head><base href="${targetUrl}">`);
-      }
 
-      res.set('Content-Type', contentType || 'text/html');
-      res.send(processedHtml);
+      const contentType = response.headers.get('content-type') || 'text/html; charset=utf-8';
+
+      // Strip headers that prevent iframe embedding
+      res.removeHeader('X-Frame-Options');
+      res.removeHeader('Content-Security-Policy');
+      res.set({
+        'Content-Type': contentType,
+        'X-Frame-Options': 'ALLOWALL',
+        'Access-Control-Allow-Origin': '*',
+      });
+
+      if (contentType.includes('text/html')) {
+        let html = await response.text();
+        const base = parsed.origin;
+
+        // Remove meta/http-equiv that set X-Frame-Options or CSP
+        html = html.replace(/<meta[^>]+http-equiv=["']?x-frame-options["']?[^>]*>/gi, '');
+        html = html.replace(/<meta[^>]+http-equiv=["']?content-security-policy["']?[^>]*>/gi, '');
+
+        // Inject base tag so relative URLs resolve correctly
+        if (!html.match(/<base\s/i)) {
+          if (html.match(/<head[^>]*>/i)) {
+            html = html.replace(/(<head[^>]*>)/i, `$1<base href="${targetUrl}">`);
+          } else {
+            html = `<base href="${targetUrl}">` + html;
+          }
+        }
+
+        // Inject small script to allow links to navigate within the proxy iframe
+        const proxyScript = `<script>
+(function(){
+  document.addEventListener('click',function(e){
+    var a=e.target.closest('a');
+    if(a&&a.href&&!a.href.startsWith('javascript')){
+      e.preventDefault();
+      var abs=new URL(a.href,document.baseURI).href;
+      window.location.href='/api/proxy?url='+encodeURIComponent(abs);
+    }
+  },true);
+  var f=document.createElement('base');f.target='_self';
+})();
+</script>`;
+        html = html.replace('</head>', proxyScript + '</head>');
+
+        res.send(html);
+      } else {
+        const buffer = await response.arrayBuffer();
+        res.send(Buffer.from(buffer));
+      }
 
       // Log history asynchronously
       storage.createHistory({
@@ -406,17 +452,14 @@ export async function registerRoutes(
         query: "Proxy Visit"
       }).catch(console.error);
 
-    } catch (err) {
+    } catch (err: any) {
       console.error("Proxy error:", err);
-      // For cross-origin/CORS issues or blocked sites, we try a more robust approach
-      res.status(500).send(`
-        <div style="background: #1a1a1a; color: #00ff00; padding: 20px; font-family: monospace; border: 1px solid #00ff00;">
-          [ERROR] ACCESS DENIED OR CONNECTION RESET<br/>
-          [TARGET] ${req.query.url}<br/>
-          [REASON] High-security site (Cloudflare/Google) or timeout.<br/>
-          [ADVICE] Try a different URL or check if the site allows proxying.
-        </div>
-      `);
+      res.status(502).send(`<!DOCTYPE html><html><body style="background:#111;color:#0f0;font-family:monospace;padding:30px">
+        <h2 style="color:#f55">[PROXY_ERROR]</h2>
+        <p><b>TARGET:</b> ${req.query.url}</p>
+        <p><b>REASON:</b> ${err.message || 'Connection refused or timeout'}</p>
+        <p style="color:#888">Some sites (Roblox, Google, etc.) block server-side requests with Cloudflare protection. Try: wikipedia.org, github.com, reddit.com</p>
+      </body></html>`);
     }
   });
 
