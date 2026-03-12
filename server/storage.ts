@@ -103,7 +103,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Chat - Return ALL messages the user can see (public + private DMs + group messages)
-  async getMessages(currentUserId: number, recipientId?: number, groupId?: number): Promise<(Message & { senderName: string })[]> {
+  async getMessages(currentUserId: number, recipientId?: number, groupId?: number): Promise<(Message & { senderName: string; replyToContent?: string | null; replyToSenderName?: string | null })[]> {
     return await db.select({
       id: messages.id,
       senderId: messages.senderId,
@@ -112,8 +112,11 @@ export class DatabaseStorage implements IStorage {
       content: messages.content,
       mediaUrl: messages.mediaUrl,
       mediaType: messages.mediaType,
+      replyToId: messages.replyToId,
       createdAt: messages.createdAt,
       senderName: users.username,
+      replyToContent: sql<string>`(SELECT content FROM messages WHERE id = ${messages.replyToId})`,
+      replyToSenderName: sql<string>`(SELECT u.username FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.id = ${messages.replyToId})`,
     })
     .from(messages)
     .innerJoin(users, eq(messages.senderId, users.id))
@@ -154,7 +157,7 @@ export class DatabaseStorage implements IStorage {
     .orderBy(messages.createdAt);
   }
 
-  async createMessage(msg: { senderId: number; recipientId?: number | null; groupId?: number | null; content: string; mediaUrl?: string | null; mediaType?: string | null }): Promise<Message> {
+  async createMessage(msg: { senderId: number; recipientId?: number | null; groupId?: number | null; content: string; mediaUrl?: string | null; mediaType?: string | null; replyToId?: number | null }): Promise<Message> {
     const [message] = await db.insert(messages).values(msg).returning();
     return message;
   }

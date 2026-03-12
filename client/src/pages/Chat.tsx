@@ -42,7 +42,7 @@ const DEFAULT_SOUNDS = [
 interface SoundEntry { id: string; name: string; url: string; }
 interface MediaPreview { url: string; type: 'image' | 'video' | 'audio'; name: string; }
 interface ForwardTarget { message: any; isOpen: boolean; }
-interface IncomingCall { fromId: number; fromName: string; offer: RTCSessionDescriptionInit; }
+interface IncomingCall { fromId: number; fromName: string; callId: string; }
 type CallState = 'idle' | 'requesting' | 'incoming' | 'connected';
 interface LogEntry { id: string; time: string; type: 'info' | 'warn' | 'crit'; msg: string; }
 
@@ -130,6 +130,9 @@ const TerminalMessage = ({
     );
   };
 
+  const isForwarded = msg.content?.startsWith('[RELAY] ');
+  const displayContent = isForwarded ? msg.content.slice('[RELAY] '.length) : msg.content;
+
   return (
     <div className={cn("flex flex-col mb-5 group", isMe ? "items-end" : "items-start")}>
       <div className={cn("flex items-center gap-2 mb-1 px-1", isMe ? "flex-row-reverse" : "flex-row")}>
@@ -151,7 +154,28 @@ const TerminalMessage = ({
             : "bg-accent/5 border-accent/30 rounded-r-lg rounded-tl-lg hover:border-accent/60"
         )}
       >
-        {msg.content && <div className="whitespace-pre-wrap leading-relaxed select-text break-words">{msg.content}</div>}
+        {/* Forwarded indicator */}
+        {isForwarded && (
+          <div className="flex items-center gap-1 text-[9px] text-accent/50 mb-1.5 font-mono border-b border-accent/10 pb-1.5">
+            <Forward className="w-3 h-3" /> Forwarded
+          </div>
+        )}
+        {/* Reply quote */}
+        {msg.replyToContent && (
+          <div className={cn(
+            "border-l-2 pl-2 mb-2 py-0.5 cursor-pointer opacity-70 hover:opacity-100 transition-opacity",
+            isMe ? "border-primary/50" : "border-accent/50"
+          )}>
+            <div className="flex items-center gap-1 text-[9px] font-mono mb-0.5 text-primary/60">
+              <Reply className="w-3 h-3" />
+              <span className="text-primary/80 font-bold">{msg.replyToSenderName}</span>
+            </div>
+            <div className="text-[10px] text-white/35 font-mono line-clamp-1 truncate">
+              {msg.replyToContent.startsWith('[RELAY] ') ? msg.replyToContent.slice(8) : msg.replyToContent}
+            </div>
+          </div>
+        )}
+        {displayContent && <div className="whitespace-pre-wrap leading-relaxed select-text break-words">{displayContent}</div>}
         {getMediaSection()}
 
         <AnimatePresence>
@@ -242,16 +266,16 @@ export default function Chat() {
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
-  const pcRef = useRef<RTCPeerConnection | null>(null);
   const callClockRef = useRef<NodeJS.Timeout | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const soundFileInputRef = useRef<HTMLInputElement>(null);
-  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const callTargetIdRef = useRef<number | null>(null);
+  const callIdRef = useRef<string | null>(null);
+  const callStateRef = useRef<CallState>('idle');
   const autoDeclineTimerRef = useRef<NodeJS.Timeout | null>(null);
   const hasInitializedSfxRef = useRef(false);
+  const headerChunkRef = useRef<Blob | null>(null);
 
   // --- DATA FETCHING ---
   const { data: groups = [] } = useQuery<any[]>({ queryKey: ['/api/chat/groups'] });
@@ -449,170 +473,104 @@ export default function Chat() {
     e.target.value = '';
   };
 
-  // ============================================================
-  // CALLING SYSTEM
-  // ============================================================
-  const createPeerConnection = () => {
-    const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] });
-    pcRef.current = pc;
-    return pc;
-  };
+  // Keep callStateRef in sync so the unified poll closure has fresh state
+  useEffect(() => { callStateRef.current = callState; }, [callState]);
 
+  // ============================================================
+  // CALLING SYSTEM (SERVER-RELAY — no WebRTC)
+  // ============================================================
   const stopAllCallMedia = () => {
     localStreamRef.current?.getTracks().forEach(t => t.stop());
     localStreamRef.current = null;
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
-    pcRef.current?.close();
-    pcRef.current = null;
     if (callClockRef.current) clearInterval(callClockRef.current);
-    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     setCallTime(0);
     setIsMuted(false);
     setIsVideoOn(false);
     setIsSharingScreen(false);
+    headerChunkRef.current = null;
   };
 
   const startCall = async (targetId: number, targetName: string, withVideo: boolean) => {
+    if (callStateRef.current !== 'idle') return;
     setCallTargetName(targetName);
     setCallState('requesting');
     setIsVideoOn(withVideo);
-    callTargetIdRef.current = targetId;
-
+    pushLog(`CALL_REQUESTING: ${targetName}`, 'warn');
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: withVideo });
-      localStreamRef.current = stream;
-      if (localVideoRef.current) localVideoRef.current.srcObject = stream;
-
-      const pc = createPeerConnection();
-      stream.getTracks().forEach(t => pc.addTrack(t, stream));
-
-      pc.onicecandidate = async (e) => {
-        if (e.candidate) {
-          await fetch('/api/chat/voice/ice', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ recipientId: targetId, candidate: e.candidate })
-          });
-        }
-      };
-
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-
-      await fetch('/api/chat/voice/offer', {
+      const res = await fetch('/api/chat/voice/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recipientId: targetId, offer })
+        body: JSON.stringify({ calleeId: targetId })
       });
-
-      pushLog(`CALL_REQUESTING: ${targetName}`, 'warn');
-      callClockRef.current = setInterval(() => setCallTime(t => t + 1), 1000);
-
-      pollIntervalRef.current = setInterval(async () => {
-        const res = await fetch('/api/chat/voice/poll');
-        const signals: any[] = await res.json();
-        for (const sig of signals) {
-          if (sig.type === 'answer') {
-            await pc.setRemoteDescription(sig.answer);
-            setCallState('connected');
-            pushLog(`CALL_CONNECTED: ${targetName}`, 'info');
-          } else if (sig.type === 'ice' && sig.candidate) {
-            await pc.addIceCandidate(sig.candidate).catch(() => {});
-          }
-        }
-      }, 2000);
-
-    } catch (err) {
-      toast({ title: "HARDWARE_FAILURE", description: "Could not access mic/camera.", variant: "destructive" });
-      endCall();
+      const { callId } = await res.json();
+      callIdRef.current = callId;
+    } catch {
+      toast({ title: "NETWORK_ERROR", description: "Could not reach server.", variant: "destructive" });
+      setCallState('idle');
     }
   };
 
   const acceptCall = async () => {
     if (!incomingCall) return;
+    const callId = incomingCall.callId;
+    callIdRef.current = callId;
     setCallState('connected');
     setCallTargetName(incomingCall.fromName);
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-      localStreamRef.current = stream;
-      if (localVideoRef.current) localVideoRef.current.srcObject = stream;
-
-      const pc = createPeerConnection();
-      stream.getTracks().forEach(t => pc.addTrack(t, stream));
-
-      pc.onicecandidate = async (e) => {
-        if (e.candidate) {
-          await fetch('/api/chat/voice/ice', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ recipientId: incomingCall.fromId, candidate: e.candidate })
-          });
-        }
-      };
-
-      await pc.setRemoteDescription(incomingCall.offer);
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-
-      await fetch('/api/chat/voice/answer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recipientId: incomingCall.fromId, answer })
-      });
-
-      callClockRef.current = setInterval(() => setCallTime(t => t + 1), 1000);
-      setIncomingCall(null);
-      pushLog(`CALL_ACCEPTED: ${incomingCall.fromName}`, 'info');
-
-    } catch (err) {
-      toast({ title: "HARDWARE_FAILURE", variant: "destructive" });
-      endCall();
-    }
+    if (autoDeclineTimerRef.current) { clearTimeout(autoDeclineTimerRef.current); autoDeclineTimerRef.current = null; }
+    setIncomingCall(null);
+    await fetch('/api/chat/voice/accept', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ callId })
+    }).catch(() => {});
+    pushLog(`CALL_ACCEPTED: ${incomingCall.fromName}`, 'info');
   };
 
-  const endCall = (fromDecline = false) => {
-    // If we're the callee and declining, notify the caller
-    if (callState === 'incoming' && incomingCall && !fromDecline) {
-      fetch('/api/chat/voice/decline', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recipientId: incomingCall.fromId })
-      }).catch(() => {});
+  const endCall = (fromSignal = false) => {
+    if (!fromSignal) {
+      const callId = callIdRef.current;
+      if (callId) {
+        fetch('/api/chat/voice/end', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ callId })
+        }).catch(() => {});
+      } else if (callStateRef.current === 'incoming' && incomingCall) {
+        fetch('/api/chat/voice/decline', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ callId: incomingCall.callId })
+        }).catch(() => {});
+      }
     }
-    if (autoDeclineTimerRef.current) {
-      clearTimeout(autoDeclineTimerRef.current);
-      autoDeclineTimerRef.current = null;
-    }
-    callTargetIdRef.current = null;
+    if (autoDeclineTimerRef.current) { clearTimeout(autoDeclineTimerRef.current); autoDeclineTimerRef.current = null; }
+    callIdRef.current = null;
     stopAllCallMedia();
     setCallState('idle');
     setIncomingCall(null);
-    setCallTargetName("");
-    pushLog("CALL_TERMINATED", 'crit');
-  };
-
-  const toggleCamera = async () => {
-    if (!localStreamRef.current) return;
-    if (isVideoOn) {
-      localStreamRef.current.getVideoTracks().forEach(t => { t.enabled = false; });
-      setIsVideoOn(false);
-    } else {
-      try {
-        const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
-        const videoTrack = videoStream.getVideoTracks()[0];
-        localStreamRef.current.addTrack(videoTrack);
-        if (localVideoRef.current) localVideoRef.current.srcObject = localStreamRef.current;
-        setIsVideoOn(true);
-      } catch {
-        toast({ title: "CAMERA_DENIED", variant: "destructive" });
-      }
-    }
+    setCallTargetName('');
+    pushLog('CALL_TERMINATED', 'crit');
   };
 
   const toggleMute = () => {
     localStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = isMuted; });
     setIsMuted(!isMuted);
+  };
+
+  const toggleCamera = async () => {
+    if (isVideoOn) {
+      localStreamRef.current?.getVideoTracks().forEach(t => t.stop());
+      setIsVideoOn(false);
+    } else {
+      try {
+        const vs = await navigator.mediaDevices.getUserMedia({ video: true });
+        const vt = vs.getVideoTracks()[0];
+        localStreamRef.current?.addTrack(vt);
+        if (localVideoRef.current) localVideoRef.current.srcObject = localStreamRef.current;
+        setIsVideoOn(true);
+      } catch { toast({ title: "CAMERA_DENIED", variant: "destructive" }); }
+    }
   };
 
   const shareScreen = async () => {
@@ -624,16 +582,103 @@ export default function Chat() {
     try {
       const screen = await (navigator.mediaDevices as any).getDisplayMedia({ video: true });
       const track = screen.getVideoTracks()[0];
-      if (pcRef.current) {
-        const sender = pcRef.current.getSenders().find(s => s.track?.kind === 'video');
-        if (sender) sender.replaceTrack(track);
+      if (localStreamRef.current) {
+        localStreamRef.current.addTrack(track);
+        if (localVideoRef.current) localVideoRef.current.srcObject = localStreamRef.current;
       }
       setIsSharingScreen(true);
       track.onended = () => setIsSharingScreen(false);
-    } catch {
-      toast({ title: "SCREEN_SHARE_DENIED", variant: "destructive" });
-    }
+    } catch { toast({ title: "SCREEN_SHARE_DENIED", variant: "destructive" }); }
   };
+
+  // ============================================================
+  // AUDIO RELAY EFFECT — starts recording+playback when connected
+  // ============================================================
+  useEffect(() => {
+    if (callState !== 'connected') return;
+    const callId = callIdRef.current;
+    if (!callId) return;
+
+    let recorder: MediaRecorder | null = null;
+    let pendingChunks: Blob[] = [];
+    let chunkIdx = 0;
+    let lastReceivedIdx = -1;
+    let sendInterval: ReturnType<typeof setInterval>;
+    let playInterval: ReturnType<typeof setInterval>;
+    let active = true;
+
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+      if (!active) { stream.getTracks().forEach(t => t.stop()); return; }
+      localStreamRef.current = stream;
+
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg';
+
+      recorder = new MediaRecorder(stream, { mimeType });
+      headerChunkRef.current = null;
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          if (!headerChunkRef.current) {
+            headerChunkRef.current = e.data; // First chunk contains codec header
+          } else {
+            pendingChunks.push(e.data);
+          }
+        }
+      };
+
+      recorder.start(150);
+
+      // Send a complete, playable audio blob every 800ms
+      sendInterval = setInterval(() => {
+        if (!headerChunkRef.current || pendingChunks.length === 0) return;
+        const complete = new Blob([headerChunkRef.current, ...pendingChunks], { type: mimeType });
+        pendingChunks = [];
+        const fr = new FileReader();
+        fr.onloadend = () => {
+          if (!active) return;
+          fetch('/api/chat/voice/audio', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ callId, dataUrl: fr.result, mimeType, idx: chunkIdx++ })
+          }).catch(() => {});
+        };
+        fr.readAsDataURL(complete);
+      }, 800);
+
+      // Poll for the other party's audio every 400ms
+      playInterval = setInterval(async () => {
+        if (!active) return;
+        try {
+          const res = await fetch(`/api/chat/voice/audio?callId=${callId}&after=${lastReceivedIdx}`);
+          const chunks: any[] = await res.json();
+          for (const chunk of chunks) {
+            lastReceivedIdx = chunk.idx;
+            const audio = new Audio(chunk.dataUrl);
+            audio.play().catch(() => {});
+          }
+        } catch {}
+      }, 400);
+
+      callClockRef.current = setInterval(() => setCallTime(t => t + 1), 1000);
+      setCallTime(0);
+      pushLog(`RELAY_ACTIVE — streaming via server`, 'info');
+    }).catch(() => {
+      toast({ title: "HARDWARE_FAILURE", description: "Mic access denied.", variant: "destructive" });
+      endCall(true);
+    });
+
+    return () => {
+      active = false;
+      recorder?.stop();
+      localStreamRef.current?.getTracks().forEach(t => t.stop());
+      localStreamRef.current = null;
+      clearInterval(sendInterval);
+      clearInterval(playInterval);
+      if (callClockRef.current) clearInterval(callClockRef.current);
+    };
+  }, [callState]);
 
   // ============================================================
   // AUDIO RECORDING (VOICE MESSAGE)

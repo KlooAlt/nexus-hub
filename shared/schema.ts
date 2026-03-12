@@ -87,6 +87,7 @@ export const messages = pgTable("messages", {
   content: text("content").notNull(),
   mediaUrl: text("media_url"),
   mediaType: text("media_type"), // 'image', 'video', 'audio'
+  replyToId: integer("reply_to_id"), // ID of message being replied to
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -153,7 +154,7 @@ export type CreateHistoryRequest = { url: string; query?: string };
 
 // Chat
 export type CreateMessageRequest = { content: string; recipientId?: number }; // If recipientId is omitted, it's public
-export type MessageWithUser = Message & { senderName: string };
+export type MessageWithUser = Message & { senderName: string; replyToContent?: string | null; replyToSenderName?: string | null };
 
 // Proxy
 export type ProxyRequest = { url: string };

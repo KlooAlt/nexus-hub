@@ -207,6 +207,7 @@ export async function registerRoutes(
       content: input.content,
       mediaUrl: input.mediaUrl ?? null,
       mediaType: input.mediaType ?? null,
+      replyToId: (req.body as any).replyToId ?? null,
     });
     res.status(201).json(message);
   });
@@ -370,6 +371,71 @@ export async function registerRoutes(
     const s = signals.get(userId) || [];
     signals.set(userId, []); // Clear after polling
     res.json(s);
+  });
+
+  // === SERVER-RELAY VOICE CALL SYSTEM ===
+  interface CallSession { callerId: number; calleeId: number; }
+  interface AudioChunk { senderId: number; dataUrl: string; mimeType: string; idx: number; }
+  const callSessions = new Map<string, CallSession>();
+  const callAudio = new Map<string, AudioChunk[]>();
+
+  app.post('/api/chat/voice/start', requireAuth, async (req, res) => {
+    const { calleeId } = req.body;
+    const callerId = req.session.userId!;
+    const callId = `call-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    callSessions.set(callId, { callerId, calleeId });
+    callAudio.set(callId, []);
+    const caller = await storage.getUser(callerId);
+    const callerName = caller?.username || `User_${callerId}`;
+    const s = signals.get(calleeId) || [];
+    s.push({ type: 'incoming', callId, fromId: callerId, fromName: callerName });
+    signals.set(calleeId, s);
+    res.json({ callId });
+  });
+
+  app.post('/api/chat/voice/accept', requireAuth, (req, res) => {
+    const { callId } = req.body;
+    const session = callSessions.get(callId);
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+    const s = signals.get(session.callerId) || [];
+    s.push({ type: 'accepted', callId });
+    signals.set(session.callerId, s);
+    res.json({ success: true });
+  });
+
+  app.post('/api/chat/voice/end', requireAuth, (req, res) => {
+    const { callId } = req.body;
+    const session = callSessions.get(callId);
+    if (session) {
+      const otherId = session.callerId === req.session.userId! ? session.calleeId : session.callerId;
+      const s = signals.get(otherId) || [];
+      s.push({ type: 'ended' });
+      signals.set(otherId, s);
+      callSessions.delete(callId);
+      callAudio.delete(callId);
+    }
+    res.json({ success: true });
+  });
+
+  app.post('/api/chat/voice/audio', requireAuth, (req, res) => {
+    const { callId, dataUrl, mimeType } = req.body;
+    const chunks = callAudio.get(callId);
+    if (!chunks) return res.json({ success: false });
+    const senderChunks = chunks.filter((c: AudioChunk) => c.senderId === req.session.userId!);
+    const idx = senderChunks.length;
+    chunks.push({ senderId: req.session.userId!, dataUrl, mimeType, idx });
+    // Keep only last 40 chunks to prevent memory bloat
+    if (chunks.length > 40) chunks.splice(0, chunks.length - 40);
+    res.json({ success: true, idx });
+  });
+
+  app.get('/api/chat/voice/audio', requireAuth, (req, res) => {
+    const callId = req.query.callId as string;
+    const after = parseInt((req.query.after as string) ?? '-1');
+    const userId = req.session.userId!;
+    const chunks = callAudio.get(callId) || [];
+    const newChunks = chunks.filter((c: AudioChunk) => c.senderId !== userId && c.idx > after);
+    res.json(newChunks);
   });
 
   // === PROXY ===
