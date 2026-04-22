@@ -426,6 +426,7 @@ export default function Chat() {
       groupId: selectedGroupId ?? undefined,
       mediaUrl,
       mediaType,
+      replyToId: replyTarget?.id ?? null,
     } as any);
 
     setInputContent("");
@@ -701,7 +702,9 @@ export default function Chat() {
             groupId: selectedGroupId ?? undefined,
             mediaUrl: reader.result as string,
             mediaType: 'audio',
+            replyToId: replyTarget?.id ?? null,
           } as any);
+          setReplyTarget(null);
           pushLog("VOICE_MESSAGE_SENT", 'info');
         };
         reader.readAsDataURL(blob);
@@ -722,60 +725,48 @@ export default function Chat() {
   };
 
   // ============================================================
-  // POLL FOR INCOMING CALLS + SIGNALS
+  // UNIFIED CALL SIGNAL POLL (always on while logged in)
+  // Handles: incoming (callee), accepted (caller), ended/decline (either)
   // ============================================================
   useEffect(() => {
-    if (callState !== 'idle') return;
     const interval = setInterval(async () => {
       try {
         const res = await fetch('/api/chat/voice/poll');
+        if (!res.ok) return;
         const sigs: any[] = await res.json();
         for (const sig of sigs) {
-          if (sig.type === 'offer') {
-            const callerName = users?.find((u: any) => u.id === sig.from)?.username || `User_${sig.from}`;
-            setIncomingCall({ fromId: sig.from, fromName: callerName, offer: sig.offer });
+          const state = callStateRef.current;
+          if (sig.type === 'incoming' && state === 'idle') {
+            setIncomingCall({ fromId: sig.fromId, fromName: sig.fromName, callId: sig.callId });
             setCallState('incoming');
-            pushLog(`INCOMING_CALL: ${callerName}`, 'warn');
-            // Auto-decline after 30 seconds if not answered
+            pushLog(`INCOMING_CALL: ${sig.fromName}`, 'warn');
             if (autoDeclineTimerRef.current) clearTimeout(autoDeclineTimerRef.current);
             autoDeclineTimerRef.current = setTimeout(() => {
-              pushLog('AUTO_DECLINED (timeout)', 'warn');
-              setCallState(cs => cs === 'incoming' ? 'idle' : cs);
-              setIncomingCall(ic => {
-                if (ic) {
-                  fetch('/api/chat/voice/decline', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ recipientId: ic.fromId })
-                  }).catch(() => {});
-                }
-                return null;
-              });
+              if (callStateRef.current === 'incoming') {
+                pushLog('AUTO_DECLINED (timeout)', 'warn');
+                fetch('/api/chat/voice/end', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ callId: sig.callId })
+                }).catch(() => {});
+                setIncomingCall(null);
+                setCallState('idle');
+              }
             }, 30000);
+          } else if (sig.type === 'accepted' && state === 'requesting') {
+            setCallState('connected');
+            pushLog('CALL_CONNECTED', 'info');
+          } else if (sig.type === 'ended' || sig.type === 'decline' || sig.type === 'declined') {
+            if (state === 'requesting') {
+              toast({ title: "CALL_DECLINED", description: "They rejected the connection.", variant: "destructive" });
+            }
+            if (state !== 'idle') endCall(true);
           }
         }
       } catch {}
-    }, 2000);
+    }, 1500);
     return () => clearInterval(interval);
-  }, [callState, users]);
-
-  // Poll for decline/answer signals when we are the caller (requesting state)
-  useEffect(() => {
-    if (callState !== 'requesting') return;
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch('/api/chat/voice/poll');
-        const sigs: any[] = await res.json();
-        for (const sig of sigs) {
-          if (sig.type === 'decline') {
-            toast({ title: "CALL_DECLINED", description: "They rejected the connection.", variant: "destructive" });
-            endCall(true);
-          }
-        }
-      } catch {}
-    }, 2000);
-    return () => clearInterval(interval);
-  }, [callState]);
+  }, []);
 
   // ============================================================
   // AUTO-SCROLL
