@@ -266,6 +266,40 @@ export async function registerRoutes(
     res.json({ success: true });
   });
 
+  // === USER PROFILE ===
+  app.get("/api/user/profile/:id", requireAuth, async (req, res) => {
+    const targetId = Number(req.params.id);
+    const [user] = await db.select().from(users).where(eq(users.id, targetId));
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Find mutual group chats
+    const myGroupRows = await db.select({ groupId: groupChatMembers.groupId })
+      .from(groupChatMembers).where(eq(groupChatMembers.userId, req.session.userId!));
+    const theirGroupRows = await db.select({ groupId: groupChatMembers.groupId })
+      .from(groupChatMembers).where(eq(groupChatMembers.userId, targetId));
+    const myIds = new Set(myGroupRows.map(r => r.groupId));
+    const mutualIds = theirGroupRows.map(r => r.groupId).filter(id => myIds.has(id));
+    const mutualGroups = mutualIds.length
+      ? await db.select().from(groupChats).where(sql`${groupChats.id} IN (${sql.join(mutualIds.map(i => sql`${i}`), sql`, `)})`)
+      : [];
+
+    const { serialKey, ...safe } = user;
+    res.json({ ...safe, mutualGroups });
+  });
+
+  app.patch("/api/user/profile", requireAuth, async (req, res) => {
+    const { username, nickname, bio, avatarUrl, usernameFont } = req.body;
+    const update: any = {};
+    if (typeof username === 'string' && username.trim().length > 0) update.username = username.trim().slice(0, 32);
+    if (nickname !== undefined) update.nickname = nickname ? String(nickname).slice(0, 32) : null;
+    if (bio !== undefined) update.bio = bio ? String(bio).slice(0, 500) : null;
+    if (avatarUrl !== undefined) update.avatarUrl = avatarUrl || null;
+    if (usernameFont !== undefined) update.usernameFont = usernameFont || null;
+    await db.update(users).set(update).where(eq(users.id, req.session.userId!));
+    const [updated] = await db.select().from(users).where(eq(users.id, req.session.userId!));
+    res.json(updated);
+  });
+
   app.get(api.chat.users.path, requireAuth, async (req, res) => {
     const usersList = await storage.getAllUsers();
     res.json(usersList);

@@ -19,6 +19,7 @@ import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@shared/routes";
 import { motion, AnimatePresence } from "framer-motion";
+import { ProfileModal, Avatar, getFontClass } from "@/components/ProfileModal";
 
 // ============================================================
 // CONSTANTS
@@ -77,22 +78,24 @@ const CyberSidebarNode = ({
 // TERMINAL MESSAGE
 // ============================================================
 const TerminalMessage = ({
-  msg, isMe, onReply, onForward, onPurge, onMediaPreview
+  msg, isMe, onReply, onForward, onPurge, onMediaPreview, onProfileClick
 }: {
   msg: any; isMe: boolean;
   onReply: (m: any) => void;
   onForward: (m: any) => void;
   onPurge: (id: number) => void;
   onMediaPreview: (m: MediaPreview) => void;
+  onProfileClick: (id: number) => void;
 }) => {
   const [showActions, setShowActions] = useState(false);
+  const displayName = msg.senderNickname || msg.senderName;
 
   if (msg.mediaType === 'sfx') {
     return (
       <div className={cn("flex mb-3", isMe ? "justify-end" : "justify-start")}>
         <div className="flex items-center gap-2 px-3 py-1.5 border border-primary/20 bg-primary/5 text-[9px] font-mono text-primary/50">
           <Volume2 className="w-3 h-3" />
-          <span>{isMe ? "You" : msg.senderName} played {msg.content.replace('[SFX:', '').replace(']', '')}</span>
+          <span>{isMe ? "You" : displayName} played {msg.content.replace('[SFX:', '').replace(']', '')}</span>
         </div>
       </div>
     );
@@ -134,15 +137,29 @@ const TerminalMessage = ({
   const displayContent = isForwarded ? msg.content.slice('[RELAY] '.length) : msg.content;
 
   return (
-    <div className={cn("flex flex-col mb-5 group", isMe ? "items-end" : "items-start")}>
-      <div className={cn("flex items-center gap-2 mb-1 px-1", isMe ? "flex-row-reverse" : "flex-row")}>
-        <span className={cn("text-[9px] font-bold uppercase", isMe ? "text-primary" : "text-accent")}>
-          {isMe ? "YOU" : msg.senderName}
-        </span>
-        <span className="text-[8px] font-mono text-white/20">
-          {format(new Date(msg.createdAt || Date.now()), "HH:mm:ss")}
-        </span>
-      </div>
+    <div className={cn("flex mb-5 group gap-2", isMe ? "flex-row-reverse" : "flex-row")}>
+      <Avatar
+        url={msg.senderAvatarUrl}
+        name={msg.senderName}
+        size={36}
+        font={msg.senderUsernameFont}
+        onClick={() => onProfileClick(msg.senderId)}
+        className="mt-5"
+      />
+      <div className={cn("flex flex-col flex-1 min-w-0", isMe ? "items-end" : "items-start")}>
+        <div className={cn("flex items-center gap-2 mb-1 px-1", isMe ? "flex-row-reverse" : "flex-row")}>
+          <button
+            onClick={() => onProfileClick(msg.senderId)}
+            className={cn("text-[11px] font-bold uppercase hover:underline", getFontClass(msg.senderUsernameFont))}
+            data-testid={`button-profile-${msg.senderId}`}
+          >
+            {isMe ? "YOU" : displayName}
+          </button>
+          {msg.senderNickname && !isMe && <span className="text-[8px] text-white/20 font-mono">@{msg.senderName}</span>}
+          <span className="text-[8px] font-mono text-white/20">
+            {format(new Date(msg.createdAt || Date.now()), "HH:mm:ss")}
+          </span>
+        </div>
 
       <motion.div
         onDoubleClick={() => setShowActions(true)}
@@ -208,6 +225,7 @@ const TerminalMessage = ({
           )}
         </AnimatePresence>
       </motion.div>
+      </div>
     </div>
   );
 };
@@ -234,6 +252,7 @@ export default function Chat() {
   // --- MESSAGE STATE ---
   const [inputContent, setInputContent] = useState("");
   const [replyTarget, setReplyTarget] = useState<any>(null);
+  const [profileUserId, setProfileUserId] = useState<number | null>(null);
   const [forwardState, setForwardState] = useState<ForwardTarget>({ message: null, isOpen: false });
   const [mediaPreview, setMediaPreview] = useState<MediaPreview | null>(null);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -1164,6 +1183,7 @@ export default function Chat() {
                 onForward={m => setForwardState({ message: m, isOpen: true })}
                 onPurge={id => deleteMessageMutation.mutate(id)}
                 onMediaPreview={setMediaPreview}
+                onProfileClick={setProfileUserId}
               />
             ))}
             <div ref={chatBottomRef} className="h-2" />
@@ -1291,6 +1311,11 @@ export default function Chat() {
           </CyberCard>
         </div>
       </div>
+      <ProfileModal
+        userId={profileUserId}
+        currentUserId={currentUser?.id ?? -1}
+        onClose={() => setProfileUserId(null)}
+      />
     </Layout>
   );
 }

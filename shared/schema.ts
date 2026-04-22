@@ -19,6 +19,10 @@ export const users = pgTable("users", {
   coins: integer("coins").notNull().default(0),
   decorationId: integer("decoration_id"),
   nameStyleId: integer("name_style_id"),
+  bio: text("bio"),
+  nickname: text("nickname"),
+  avatarUrl: text("avatar_url"),
+  usernameFont: text("username_font"),
 });
 
 // Shop Items (Decorations and Name Stylers)
@@ -154,7 +158,14 @@ export type CreateHistoryRequest = { url: string; query?: string };
 
 // Chat
 export type CreateMessageRequest = { content: string; recipientId?: number }; // If recipientId is omitted, it's public
-export type MessageWithUser = Message & { senderName: string; replyToContent?: string | null; replyToSenderName?: string | null };
+export type MessageWithUser = Message & {
+  senderName: string;
+  senderAvatarUrl?: string | null;
+  senderNickname?: string | null;
+  senderUsernameFont?: string | null;
+  replyToContent?: string | null;
+  replyToSenderName?: string | null;
+};
 
 // Proxy
 export type ProxyRequest = { url: string };
