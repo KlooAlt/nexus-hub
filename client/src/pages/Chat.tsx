@@ -359,6 +359,15 @@ export default function Chat() {
   const selectGroupNode = (id: number) => { setSelectedRecipientId(null); setSelectedGroupId(id); pushLog(`CHANNEL: GROUP_${id}`); };
 
   // ============================================================
+  // USER MAP — avatar/nickname/font lookup by userId (avoids putting blob data in every message row)
+  // ============================================================
+  const usersMap = useMemo(() => {
+    const m = new Map<number, any>();
+    if (users) (users as any[]).forEach((u: any) => m.set(u.id, u));
+    return m;
+  }, [users]);
+
+  // ============================================================
   // MESSAGE FILTERING
   // ============================================================
   const unifiedMessages = useMemo(() => {
@@ -370,8 +379,12 @@ export default function Chat() {
           (m.senderId === selectedRecipientId && m.recipientId === currentUser?.id);
       }
       return !m.groupId && !m.recipientId;
-    }).sort((a: any, b: any) => new Date(a.createdAt!).getTime() - new Date(b.createdAt!).getTime());
-  }, [messages, selectedGroupId, selectedRecipientId, currentUser?.id]);
+    }).sort((a: any, b: any) => new Date(a.createdAt!).getTime() - new Date(b.createdAt!).getTime())
+    .map((m: any) => {
+      const u = usersMap.get(m.senderId);
+      return { ...m, senderAvatarUrl: u?.avatarUrl ?? null, senderNickname: u?.nickname ?? null, senderUsernameFont: u?.usernameFont ?? null };
+    });
+  }, [messages, selectedGroupId, selectedRecipientId, currentUser?.id, usersMap]);
 
   // ============================================================
   // AUTO-PLAY SFX FROM OTHER USERS

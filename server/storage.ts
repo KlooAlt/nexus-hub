@@ -115,9 +115,6 @@ export class DatabaseStorage implements IStorage {
       replyToId: messages.replyToId,
       createdAt: messages.createdAt,
       senderName: users.username,
-      senderAvatarUrl: users.avatarUrl,
-      senderNickname: users.nickname,
-      senderUsernameFont: users.usernameFont,
       replyToContent: sql<string>`(SELECT content FROM messages WHERE id = ${messages.replyToId})`,
       replyToSenderName: sql<string>`(SELECT u.username FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.id = ${messages.replyToId})`,
     } as any)
