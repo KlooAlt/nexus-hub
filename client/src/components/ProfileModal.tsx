@@ -1,29 +1,94 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Pencil, Save, Upload, Users as UsersIcon, Sparkles } from "lucide-react";
+import {
+  X,
+  Pencil,
+  Save,
+  Upload,
+  Users as UsersIcon,
+  Sparkles,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 
-export const USERNAME_FONTS: { id: string; label: string; className: string }[] = [
+export const USERNAME_FONTS: {
+  id: string;
+  label: string;
+  className: string;
+}[] = [
   { id: "default", label: "DEFAULT", className: "font-mono" },
-  { id: "neon", label: "NEON", className: "font-mono text-primary drop-shadow-[0_0_6px_rgba(34,197,94,0.9)]" },
-  { id: "matrix", label: "MATRIX", className: "font-mono text-green-400 tracking-widest" },
-  { id: "cyber", label: "CYBER", className: "font-['Orbitron'] tracking-wider" },
-  { id: "glitch", label: "GLITCH", className: "font-mono italic text-fuchsia-400 drop-shadow-[0_0_4px_rgba(217,70,239,0.8)]" },
-  { id: "fire", label: "FIRE", className: "font-mono font-bold bg-gradient-to-r from-yellow-400 via-orange-500 to-red-500 bg-clip-text text-transparent" },
-  { id: "ice", label: "ICE", className: "font-mono font-bold bg-gradient-to-r from-cyan-300 to-blue-500 bg-clip-text text-transparent" },
-  { id: "rainbow", label: "RAINBOW", className: "font-mono font-bold bg-gradient-to-r from-pink-500 via-yellow-400 to-cyan-400 bg-clip-text text-transparent" },
+  {
+    id: "neon",
+    label: "NEON",
+    className:
+      "font-mono text-primary drop-shadow-[0_0_6px_rgba(34,197,94,0.9)]",
+  },
+  {
+    id: "matrix",
+    label: "MATRIX",
+    className: "font-mono text-green-400 tracking-widest",
+  },
+  {
+    id: "cyber",
+    label: "CYBER",
+    className: "font-['Orbitron'] tracking-wider",
+  },
+  {
+    id: "glitch",
+    label: "GLITCH",
+    className:
+      "font-mono italic text-fuchsia-400 drop-shadow-[0_0_4px_rgba(217,70,239,0.8)]",
+  },
+  {
+    id: "fire",
+    label: "FIRE",
+    className:
+      "font-mono font-bold bg-gradient-to-r from-yellow-400 via-orange-500 to-red-500 bg-clip-text text-transparent",
+  },
+  {
+    id: "ice",
+    label: "ICE",
+    className:
+      "font-mono font-bold bg-gradient-to-r from-cyan-300 to-blue-500 bg-clip-text text-transparent",
+  },
+  {
+    id: "rainbow",
+    label: "RAINBOW",
+    className:
+      "font-mono font-bold bg-gradient-to-r from-pink-500 via-yellow-400 to-cyan-400 bg-clip-text text-transparent",
+  },
   { id: "ghost", label: "GHOST", className: "font-mono text-white/40" },
-  { id: "elite", label: "ELITE", className: "font-['Orbitron'] font-black uppercase text-primary tracking-widest" },
+  {
+    id: "elite",
+    label: "ELITE",
+    className:
+      "font-['Orbitron'] font-black uppercase text-primary tracking-widest",
+  },
 ];
 
 export function getFontClass(id?: string | null) {
-  return USERNAME_FONTS.find(f => f.id === id)?.className || USERNAME_FONTS[0].className;
+  return (
+    USERNAME_FONTS.find((f) => f.id === id)?.className ||
+    USERNAME_FONTS[0].className
+  );
 }
 
-export function Avatar({ url, name, size = 32, font, onClick, className }:
-  { url?: string | null; name: string; size?: number; font?: string | null; onClick?: () => void; className?: string }) {
+export function Avatar({
+  url,
+  name,
+  size = 32,
+  font,
+  onClick,
+  className,
+}: {
+  url?: string | null;
+  name: string;
+  size?: number;
+  font?: string | null;
+  onClick?: () => void;
+  className?: string;
+}) {
   const initials = (name || "?").slice(0, 2).toUpperCase();
   return (
     <div
@@ -31,7 +96,7 @@ export function Avatar({ url, name, size = 32, font, onClick, className }:
       className={cn(
         "flex items-center justify-center rounded-full overflow-hidden border border-primary/40 bg-black/50 shrink-0 select-none",
         onClick && "cursor-pointer hover:border-primary transition-colors",
-        className
+        className,
       )}
       style={{ width: size, height: size, minWidth: size }}
       data-testid={`avatar-${name}`}
@@ -39,7 +104,10 @@ export function Avatar({ url, name, size = 32, font, onClick, className }:
       {url ? (
         <img src={url} alt={name} className="w-full h-full object-cover" />
       ) : (
-        <span className={cn("text-[10px] font-bold", getFontClass(font))} style={{ fontSize: Math.max(8, size / 3) }}>
+        <span
+          className={cn("text-[10px] font-bold", getFontClass(font))}
+          style={{ fontSize: Math.max(8, size / 3) }}
+        >
           {initials}
         </span>
       )}
@@ -53,7 +121,11 @@ interface ProfileModalProps {
   onClose: () => void;
 }
 
-export function ProfileModal({ userId, currentUserId, onClose }: ProfileModalProps) {
+export function ProfileModal({
+  userId,
+  currentUserId,
+  onClose,
+}: ProfileModalProps) {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
@@ -61,41 +133,42 @@ export function ProfileModal({ userId, currentUserId, onClose }: ProfileModalPro
   const fileRef = useRef<HTMLInputElement>(null);
 
   const { data: profile, isLoading } = useQuery<any>({
-    queryKey: ['/api/user/profile', userId],
+    queryKey: ["/api/user/profile", userId],
     queryFn: async () => {
       const r = await fetch(`/api/user/profile/${userId}`);
-      if (!r.ok) throw new Error('failed');
+      if (!r.ok) throw new Error("failed");
       return r.json();
     },
     enabled: !!userId,
   });
 
   useEffect(() => {
-    if (profile) setForm({
-      username: profile.username || "",
-      nickname: profile.nickname || "",
-      bio: profile.bio || "",
-      avatarUrl: profile.avatarUrl || "",
-      usernameFont: profile.usernameFont || "default",
-    });
+    if (profile)
+      setForm({
+        username: profile.username || "",
+        nickname: profile.nickname || "",
+        bio: profile.bio || "",
+        avatarUrl: profile.avatarUrl || "",
+        usernameFont: profile.usernameFont || "default",
+      });
   }, [profile]);
 
   const saveMut = useMutation({
     mutationFn: async () => {
-      const r = await fetch('/api/user/profile', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+      const r = await fetch("/api/user/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
-      if (!r.ok) throw new Error('save failed');
+      if (!r.ok) throw new Error("save failed");
       return r.json();
     },
     onSuccess: () => {
       toast({ title: "PROFILE_UPDATED" });
-      qc.invalidateQueries({ queryKey: ['/api/user/profile', userId] });
-      qc.invalidateQueries({ queryKey: ['/api/auth/me'] });
-      qc.invalidateQueries({ queryKey: ['/api/chat/users'] });
-      qc.invalidateQueries({ queryKey: ['/api/chat/messages'] });
+      qc.invalidateQueries({ queryKey: ["/api/user/profile", userId] });
+      qc.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      qc.invalidateQueries({ queryKey: ["/api/chat/users"] });
+      qc.invalidateQueries({ queryKey: ["/api/chat/messages"] });
       setEditing(false);
     },
     onError: () => toast({ title: "SAVE_FAILED", variant: "destructive" }),
@@ -105,11 +178,16 @@ export function ProfileModal({ userId, currentUserId, onClose }: ProfileModalPro
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 8 * 1024 * 1024) {
-      toast({ title: "TOO_LARGE", description: "Max 8MB", variant: "destructive" });
+      toast({
+        title: "TOO_LARGE",
+        description: "Max 8MB",
+        variant: "destructive",
+      });
       return;
     }
     const reader = new FileReader();
-    reader.onloadend = () => setForm((f: any) => ({ ...f, avatarUrl: reader.result }));
+    reader.onloadend = () =>
+      setForm((f: any) => ({ ...f, avatarUrl: String(reader.result || "") }));
     reader.readAsDataURL(file);
   };
 
@@ -120,13 +198,17 @@ export function ProfileModal({ userId, currentUserId, onClose }: ProfileModalPro
     <AnimatePresence>
       {userId && (
         <motion.div
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
           className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={onClose}
         >
           <motion.div
-            initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
-            onClick={e => e.stopPropagation()}
+            initial={{ scale: 0.9, y: 20 }}
+            animate={{ scale: 1, y: 0 }}
+            exit={{ scale: 0.9, y: 20 }}
+            onClick={(e) => e.stopPropagation()}
             className="bg-black border border-primary/40 rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto shadow-[0_0_40px_rgba(34,197,94,0.3)]"
             data-testid="profile-modal"
           >
@@ -143,7 +225,9 @@ export function ProfileModal({ userId, currentUserId, onClose }: ProfileModalPro
 
             <div className="p-5 -mt-10">
               {isLoading || !profile ? (
-                <div className="text-primary/60 font-mono text-xs text-center py-10">LOADING_PROFILE...</div>
+                <div className="text-primary/60 font-mono text-xs text-center py-10">
+                  LOADING_PROFILE...
+                </div>
               ) : (
                 <>
                   <div className="flex items-end gap-3 mb-4">
@@ -164,16 +248,30 @@ export function ProfileModal({ userId, currentUserId, onClose }: ProfileModalPro
                           >
                             <Upload className="w-3 h-3" />
                           </button>
-                          <input ref={fileRef} type="file" accept="image/*,image/gif" onChange={handleAvatarUpload} className="hidden" />
+                          <input
+                            ref={fileRef}
+                            type="file"
+                            accept="image/*,image/gif"
+                            onChange={handleAvatarUpload}
+                            className="hidden"
+                          />
                         </>
                       )}
                     </div>
                     <div className="flex-1 pb-2">
-                      <div className={cn("text-lg font-bold leading-none", getFontClass(profile.usernameFont))} data-testid="text-display-name">
+                      <div
+                        className={cn(
+                          "text-lg font-bold leading-none",
+                          getFontClass(profile.usernameFont),
+                        )}
+                        data-testid="text-display-name"
+                      >
                         {displayName}
                       </div>
-                      <div className="text-[10px] text-primary/50 font-mono mt-1">@{profile.username}</div>
-                      {profile.role === 'owner' && (
+                      <div className="text-[10px] text-primary/50 font-mono mt-1">
+                        @{profile.username}
+                      </div>
+                      {profile.role === "owner" && (
                         <div className="inline-flex items-center gap-1 mt-1 text-[9px] text-fuchsia-400 font-mono border border-fuchsia-500/40 px-1.5 py-0.5 rounded">
                           <Sparkles className="w-2.5 h-2.5" /> OWNER
                         </div>
@@ -193,26 +291,39 @@ export function ProfileModal({ userId, currentUserId, onClose }: ProfileModalPro
                   {!editing ? (
                     <>
                       <div className="border border-primary/20 rounded p-3 mb-3 bg-primary/5">
-                        <div className="text-[9px] text-primary/50 font-mono uppercase mb-1">BIO</div>
+                        <div className="text-[9px] text-primary/50 font-mono uppercase mb-1">
+                          BIO
+                        </div>
                         <div className="text-xs text-white/80 font-mono whitespace-pre-wrap">
-                          {profile.bio || <span className="text-white/30 italic">No bio set.</span>}
+                          {profile.bio || (
+                            <span className="text-white/30 italic">
+                              No bio set.
+                            </span>
+                          )}
                         </div>
                       </div>
 
                       <div className="border border-accent/20 rounded p-3 bg-accent/5">
                         <div className="flex items-center gap-1 text-[9px] text-accent/70 font-mono uppercase mb-2">
-                          <UsersIcon className="w-3 h-3" /> MUTUAL_GROUPS ({profile.mutualGroups?.length || 0})
+                          <UsersIcon className="w-3 h-3" /> MUTUAL_GROUPS (
+                          {profile.mutualGroups?.length || 0})
                         </div>
                         {profile.mutualGroups?.length ? (
                           <div className="space-y-1">
                             {profile.mutualGroups.map((g: any) => (
-                              <div key={g.id} className="text-[11px] font-mono text-white/70 px-2 py-1 bg-black/40 rounded border border-accent/10" data-testid={`mutual-group-${g.id}`}>
+                              <div
+                                key={g.id}
+                                className="text-[11px] font-mono text-white/70 px-2 py-1 bg-black/40 rounded border border-accent/10"
+                                data-testid={`mutual-group-${g.id}`}
+                              >
                                 # {g.name}
                               </div>
                             ))}
                           </div>
                         ) : (
-                          <div className="text-[11px] text-white/30 italic font-mono">No shared groups.</div>
+                          <div className="text-[11px] text-white/30 italic font-mono">
+                            No shared groups.
+                          </div>
                         )}
                       </div>
                     </>
@@ -221,7 +332,9 @@ export function ProfileModal({ userId, currentUserId, onClose }: ProfileModalPro
                       <Field label="USERNAME">
                         <input
                           value={form.username}
-                          onChange={e => setForm({ ...form, username: e.target.value })}
+                          onChange={(e) =>
+                            setForm({ ...form, username: e.target.value })
+                          }
                           maxLength={32}
                           className="w-full bg-black border border-primary/30 px-2 py-1.5 text-xs font-mono text-white rounded focus:outline-none focus:border-primary"
                           data-testid="input-username"
@@ -230,7 +343,9 @@ export function ProfileModal({ userId, currentUserId, onClose }: ProfileModalPro
                       <Field label="NICKNAME (optional display name)">
                         <input
                           value={form.nickname}
-                          onChange={e => setForm({ ...form, nickname: e.target.value })}
+                          onChange={(e) =>
+                            setForm({ ...form, nickname: e.target.value })
+                          }
                           maxLength={32}
                           className="w-full bg-black border border-primary/30 px-2 py-1.5 text-xs font-mono text-white rounded focus:outline-none focus:border-primary"
                           data-testid="input-nickname"
@@ -239,24 +354,32 @@ export function ProfileModal({ userId, currentUserId, onClose }: ProfileModalPro
                       <Field label="BIO">
                         <textarea
                           value={form.bio}
-                          onChange={e => setForm({ ...form, bio: e.target.value })}
+                          onChange={(e) =>
+                            setForm({ ...form, bio: e.target.value })
+                          }
                           maxLength={500}
                           rows={3}
                           className="w-full bg-black border border-primary/30 px-2 py-1.5 text-xs font-mono text-white rounded focus:outline-none focus:border-primary resize-none"
                           data-testid="input-bio"
                         />
-                        <div className="text-[8px] text-white/30 text-right mt-0.5">{(form.bio || "").length}/500</div>
+                        <div className="text-[8px] text-white/30 text-right mt-0.5">
+                          {(form.bio || "").length}/500
+                        </div>
                       </Field>
                       <Field label="USERNAME FONT (free for everyone)">
                         <div className="grid grid-cols-2 gap-1.5">
-                          {USERNAME_FONTS.map(f => (
+                          {USERNAME_FONTS.map((f) => (
                             <button
                               key={f.id}
                               type="button"
-                              onClick={() => setForm({ ...form, usernameFont: f.id })}
+                              onClick={() =>
+                                setForm({ ...form, usernameFont: f.id })
+                              }
                               className={cn(
                                 "border px-2 py-1.5 rounded text-xs transition-all",
-                                form.usernameFont === f.id ? "border-primary bg-primary/10" : "border-primary/20 hover:border-primary/50"
+                                form.usernameFont === f.id
+                                  ? "border-primary bg-primary/10"
+                                  : "border-primary/20 hover:border-primary/50",
                               )}
                               data-testid={`button-font-${f.id}`}
                             >
@@ -268,7 +391,13 @@ export function ProfileModal({ userId, currentUserId, onClose }: ProfileModalPro
 
                       <div className="flex gap-2 pt-2">
                         <button
-                          onClick={() => { setEditing(false); setForm({ ...profile, usernameFont: profile.usernameFont || 'default' }); }}
+                          onClick={() => {
+                            setEditing(false);
+                            setForm({
+                              ...profile,
+                              usernameFont: profile.usernameFont || "default",
+                            });
+                          }}
                           className="flex-1 text-[10px] font-mono text-white/60 border border-white/20 px-2 py-2 rounded hover:bg-white/5"
                           data-testid="button-cancel-edit"
                         >
@@ -296,10 +425,18 @@ export function ProfileModal({ userId, currentUserId, onClose }: ProfileModalPro
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <div>
-      <div className="text-[9px] text-primary/60 font-mono uppercase mb-1">{label}</div>
+      <div className="text-[9px] text-primary/60 font-mono uppercase mb-1">
+        {label}
+      </div>
       {children}
     </div>
   );

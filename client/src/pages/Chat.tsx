@@ -363,14 +363,14 @@ export default function Chat() {
   // ============================================================
   const unifiedMessages = useMemo(() => {
     if (!messages) return [];
-    return messages.filter(m => {
+    return messages.filter((m: any) => {
       if (selectedGroupId) return m.groupId === selectedGroupId;
       if (selectedRecipientId) {
         return (m.senderId === currentUser?.id && m.recipientId === selectedRecipientId) ||
           (m.senderId === selectedRecipientId && m.recipientId === currentUser?.id);
       }
       return !m.groupId && !m.recipientId;
-    }).sort((a, b) => new Date(a.createdAt!).getTime() - new Date(b.createdAt!).getTime());
+    }).sort((a: any, b: any) => new Date(a.createdAt!).getTime() - new Date(b.createdAt!).getTime());
   }, [messages, selectedGroupId, selectedRecipientId, currentUser?.id]);
 
   // ============================================================
@@ -783,7 +783,7 @@ export default function Chat() {
           }
         }
       } catch {}
-    }, 1500);
+    }, 3000);
     return () => clearInterval(interval);
   }, []);
 
@@ -791,7 +791,8 @@ export default function Chat() {
   // AUTO-SCROLL
   // ============================================================
   useEffect(() => {
-    setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'auto' }), 50);
+    const id = setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'auto' }), 10);
+    return () => clearTimeout(id);
   }, [unifiedMessages.length, selectedRecipientId, selectedGroupId]);
 
   // ============================================================
@@ -803,7 +804,7 @@ export default function Chat() {
     return "BROADCAST_HUB";
   }, [selectedGroupId, selectedRecipientId, groups, users]);
 
-  const filteredUsers = users?.filter(u => u.id !== currentUser?.id && u.username.toLowerCase().includes(searchTerm.toLowerCase()));
+  const filteredUsers = users?.filter((u: any) => u.id !== currentUser?.id && u.username.toLowerCase().includes(searchTerm.toLowerCase()));
   const filteredGroups = (groups as any[]).filter((g: any) => g.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
   // ============================================================
@@ -955,7 +956,7 @@ export default function Chat() {
                   <button onClick={() => setShowEveryoneList(false)}><X className="w-5 h-5 text-primary/60 hover:text-primary" /></button>
                 </div>
                 <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
-                  {users?.filter(u => u.id !== currentUser?.id).map(u => (
+                  {users?.filter((u: any) => u.id !== currentUser?.id).map((u: any) => (
                     <div key={u.id} className="flex items-center justify-between p-3 border border-primary/20 bg-primary/5">
                       <div className="flex items-center gap-3">
                         <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_6px_#22c55e]" />
@@ -1018,7 +1019,7 @@ export default function Chat() {
                 </div>
                 <div className="max-h-80 overflow-y-auto space-y-1">
                   {[
-                    ...users!.filter(u => u.id !== currentUser?.id).map(u => ({ id: u.id, name: u.username, type: 'dm' as const })),
+                    ...users!.filter((u: any) => u.id !== currentUser?.id).map((u: any) => ({ id: u.id, name: u.username, type: 'dm' as const })),
                     ...(groups as any[]).map((g: any) => ({ id: g.id, name: g.name, type: 'group' as const }))
                   ].map(t => (
                     <button key={`${t.type}-${t.id}`}
@@ -1083,7 +1084,7 @@ export default function Chat() {
                 <div className="pt-2 pb-1 px-3 text-[8px] font-bold text-primary/30 uppercase tracking-widest flex items-center gap-2">
                   <span className="w-2 h-px bg-primary/20 flex-1" /> DMs <span className="w-2 h-px bg-primary/20 flex-1" />
                 </div>
-                {filteredUsers?.map(u => (
+                {filteredUsers?.map((u: any) => (
                   <CyberSidebarNode key={u.id} label={u.username} isActive={selectedRecipientId === u.id} onClick={() => selectPrivateNode(u.id)} />
                 ))}
                 <div className="pt-2 pb-1 px-3 text-[8px] font-bold text-primary/30 uppercase tracking-widest flex items-center gap-2">
@@ -1174,10 +1175,10 @@ export default function Chat() {
                 <p className="font-mono text-[11px] tracking-[1em] uppercase">No_Transmissions</p>
               </div>
             )}
-            {unifiedMessages.map(msg => (
+            {unifiedMessages.map((msg: any) => (
               <TerminalMessage
                 key={msg.id}
-                msg={msg}
+                msg={msg as any}
                 isMe={msg.senderId === currentUser?.id}
                 onReply={setReplyTarget}
                 onForward={m => setForwardState({ message: m, isOpen: true })}
