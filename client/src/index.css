@@ -1,104 +1,157 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@100..800&family=Orbitron:wght@400..900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@100..800&family=Orbitron:wght@400..900&family=Inter:wght@300..700&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  /* HSL Values */
-  --background: 240 10% 4%;
-  --foreground: 130 100% 50%; /* Neon Green text */
-  
-  --primary: 130 100% 50%;
-  --primary-foreground: 240 10% 4%;
-  
-  --secondary: 240 5% 10%;
-  --secondary-foreground: 130 80% 60%;
-  
-  --muted: 240 5% 15%;
-  --muted-foreground: 130 40% 40%;
-  
-  --accent: 280 100% 50%; /* Purple Accent */
+  /* Discord-inspired palette with rich variety */
+  --background: 228 7% 20%;        /* #2f3136 Discord main bg */
+  --sidebar-bg: 225 7% 17%;        /* #2b2d31 sidebar */
+  --sidebar-dark: 220 8% 13%;      /* #1e1f22 darkest sidebar */
+
+  --foreground: 220 13% 88%;       /* #dcddde Discord text */
+
+  --primary: 261 80% 68%;          /* #8b5cf6 violet / indigo */
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 228 8% 26%;         /* #3c3f45 elevated surface */
+  --secondary-foreground: 220 13% 78%;
+
+  --muted: 228 7% 30%;
+  --muted-foreground: 220 7% 58%;  /* #949ba4 muted text */
+
+  --accent: 175 66% 47%;           /* #26c0a5 teal / emerald accent */
   --accent-foreground: 0 0% 100%;
-  
-  --destructive: 0 100% 50%;
+
+  /* Extra palette colors (used directly via Tailwind) */
+  --amber: 38 92% 50%;             /* #f59e0b warm amber */
+  --rose: 347 77% 58%;             /* #f43f5e rose red */
+  --sky: 200 98% 60%;              /* #33ccff sky blue */
+  --pink: 316 73% 69%;             /* #f4b8e4 pink */
+
+  --destructive: 0 80% 58%;        /* #e84040 red */
   --destructive-foreground: 0 0% 100%;
 
-  --border: 130 50% 20%;
-  --input: 240 5% 10%;
-  --ring: 130 100% 50%;
-  
-  --radius: 0px; /* Cyberpunk loves sharp edges */
+  --border: 225 6% 28%;
+  --input: 228 8% 15%;
+  --ring: 261 80% 68%;
+
+  --radius: 6px;
 
   --font-mono: 'JetBrains Mono', monospace;
+  --font-sans: 'Inter', sans-serif;
   --font-display: 'Orbitron', sans-serif;
 }
 
 @layer base {
-  body {
-    @apply bg-background text-foreground antialiased font-mono overflow-x-hidden;
-    background-image: 
-      linear-gradient(rgba(0, 255, 0, 0.03) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(0, 255, 0, 0.03) 1px, transparent 1px);
-    background-size: 30px 30px;
-  }
-  
-  h1, h2, h3, h4, h5, h6 {
-    @apply font-display tracking-widest uppercase;
-    text-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--primary) / 0.3) transparent;
   }
 
-  /* Scanline effect */
-  body::after {
-    content: "";
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    background: linear-gradient(
-      to bottom,
-      transparent 50%,
-      rgba(0, 0, 0, 0.2) 50%
-    );
-    background-size: 100% 4px;
-    z-index: 9999;
-    pointer-events: none;
-    opacity: 0.3;
+  *::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  *::-webkit-scrollbar-track { background: transparent; }
+  *::-webkit-scrollbar-thumb {
+    background: hsl(var(--primary) / 0.3);
+    border-radius: 4px;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--primary) / 0.6);
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-sans), var(--font-mono);
+    background-color: hsl(var(--background));
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-sans), var(--font-mono);
+    font-weight: 600;
   }
 }
 
 @layer utilities {
+  /* Discord-like channel item styles */
+  .discord-sidebar {
+    background-color: hsl(var(--sidebar-bg));
+  }
+
+  .discord-sidebar-dark {
+    background-color: hsl(var(--sidebar-dark));
+  }
+
+  /* Glow utilities — using primary violet */
   .text-glow {
-    text-shadow: 0 0 5px currentColor;
+    text-shadow: 0 0 8px hsl(var(--primary) / 0.6);
   }
-  
+
   .border-glow {
-    box-shadow: 0 0 10px theme('colors.primary.DEFAULT');
+    box-shadow: 0 0 0 1px hsl(var(--primary) / 0.5), 0 0 16px hsl(var(--primary) / 0.2);
   }
 
+  .glow-teal {
+    box-shadow: 0 0 16px hsl(var(--accent) / 0.3);
+  }
+
+  .glow-amber {
+    box-shadow: 0 0 16px hsl(38 92% 50% / 0.3);
+  }
+
+  /* Discord-like card */
+  .discord-card {
+    @apply rounded-lg border;
+    background-color: hsl(var(--secondary));
+    border-color: hsl(var(--border));
+  }
+
+  /* Smooth message hover */
+  .message-hover:hover {
+    background-color: hsl(var(--secondary) / 0.4);
+  }
+
+  /* Channel button active */
+  .channel-active {
+    background-color: hsl(var(--primary) / 0.15);
+    color: hsl(var(--primary));
+  }
+
+  /* Keeping cyber-box for backwards compat but modernised */
   .cyber-box {
-    @apply border border-primary/50 bg-black/80 backdrop-blur-sm relative;
-    clip-path: polygon(
-      0 0,
-      100% 0,
-      100% calc(100% - 20px),
-      calc(100% - 20px) 100%,
-      0 100%
-    );
+    @apply rounded-lg border;
+    background-color: hsl(var(--secondary));
+    border-color: hsl(var(--border));
+    box-shadow: 0 4px 24px rgba(0,0,0,0.4);
   }
 
-  /* Glitch effect utility (simplified) */
+  /* Glitch kept but reduced */
   .glitch-hover:hover {
-    animation: glitch 0.3s cubic-bezier(.25, .46, .45, .94) both infinite;
+    animation: glitch 0.3s cubic-bezier(.25,.46,.45,.94) both;
   }
 
   @keyframes glitch {
     0% { transform: translate(0) }
-    20% { transform: translate(-2px, 2px) }
-    40% { transform: translate(-2px, -2px) }
-    60% { transform: translate(2px, 2px) }
-    80% { transform: translate(2px, -2px) }
+    20% { transform: translate(-1px, 1px) }
+    40% { transform: translate(-1px, -1px) }
+    60% { transform: translate(1px, 1px) }
+    80% { transform: translate(1px, -1px) }
     100% { transform: translate(0) }
+  }
+
+  /* Status dot colors */
+  .status-online { background-color: #57f287; box-shadow: 0 0 6px #57f287; }
+  .status-idle    { background-color: #fee75c; box-shadow: 0 0 6px #fee75c; }
+  .status-dnd     { background-color: #ed4245; box-shadow: 0 0 6px #ed4245; }
+  .status-offline { background-color: #636c75; }
+
+  /* Emoji picker */
+  .emoji-grid {
+    display: grid;
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    gap: 2px;
   }
 }

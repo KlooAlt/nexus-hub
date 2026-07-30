@@ -1,6 +1,6 @@
 
 import { db } from "./db";
-import { users, accessKeys, searchHistory, messages, groupChats, groupChatMembers } from "@shared/schema";
+import { users, accessKeys, searchHistory, messages, groupChats, groupChatMembers, customEmojis } from "@shared/schema";
 import { eq, desc, and, or, gt, sql } from "drizzle-orm";
 import type { Express, Request } from "express";
 import type { Server } from "http";
@@ -478,6 +478,65 @@ export async function registerRoutes(
     const chunks = callAudio.get(callId) || [];
     const newChunks = chunks.filter((c: AudioChunk) => c.senderId !== userId && c.idx > after);
     res.json(newChunks);
+  });
+
+  // === ACCESS REQUESTS (public - no auth required) ===
+  app.post('/api/access-requests', async (req, res) => {
+    try {
+      const { name, message } = req.body;
+      if (!name || typeof name !== 'string' || name.trim().length < 1) {
+        return res.status(400).json({ message: 'Name is required' });
+      }
+      if (!message || typeof message !== 'string' || message.trim().length < 5) {
+        return res.status(400).json({ message: 'Message is required (min 5 characters)' });
+      }
+      const request = await storage.createAccessRequest({ name: name.trim(), message: message.trim() });
+      res.status(201).json(request);
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || 'Failed' });
+    }
+  });
+
+  app.get('/api/admin/requests', requireOwner, async (req, res) => {
+    const requests = await storage.listAccessRequests();
+    res.json(requests);
+  });
+
+  app.patch('/api/admin/requests/:id', requireOwner, async (req, res) => {
+    const { status } = req.body;
+    if (!['pending', 'approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ message: 'Invalid status' });
+    }
+    await storage.updateAccessRequestStatus(Number(req.params.id), status);
+    res.json({ success: true });
+  });
+
+  // === CUSTOM EMOJIS ===
+  app.get('/api/emojis', requireAuth, async (req, res) => {
+    const emojis = await storage.listCustomEmojis();
+    res.json(emojis);
+  });
+
+  app.post('/api/admin/emojis', requireOwner, async (req, res) => {
+    try {
+      const { name, url } = req.body;
+      if (!name || typeof name !== 'string' || name.trim().length < 1) {
+        return res.status(400).json({ message: 'Name is required' });
+      }
+      if (!url || typeof url !== 'string' || !url.startsWith('data:image/')) {
+        return res.status(400).json({ message: 'A valid image URL is required' });
+      }
+      const emoji = await storage.createCustomEmoji({ name: name.trim().toLowerCase().replace(/\s+/g, '_'), url, createdBy: req.session.userId! });
+      res.status(201).json(emoji);
+    } catch (err: any) {
+      if (err?.message?.includes('unique')) return res.status(409).json({ message: 'Emoji name already exists' });
+      res.status(500).json({ message: err?.message || 'Failed' });
+    }
+  });
+
+  app.delete('/api/admin/emojis/:id', requireOwner, async (req, res) => {
+    await storage.deleteCustomEmoji(Number(req.params.id));
+    res.status(204).send();
   });
 
   // === PROXY ===

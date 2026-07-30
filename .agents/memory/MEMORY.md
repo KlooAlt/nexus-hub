@@ -1,0 +1,1 @@
+- [Theme & DB tables](theme-db.md) — Discord-like dark theme (violet primary, teal accent); new tables: access_requests, custom_emojis added via raw SQL (not drizzle push, which warned of data loss on existing cols).

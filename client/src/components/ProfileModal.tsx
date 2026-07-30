@@ -90,22 +90,42 @@ export function Avatar({
   className?: string;
 }) {
   const initials = (name || "?").slice(0, 2).toUpperCase();
+  // Treat empty string same as null
+  const validUrl = url && url.trim().length > 4 ? url : null;
+
   return (
     <div
       onClick={onClick}
       className={cn(
-        "flex items-center justify-center rounded-full overflow-hidden border border-primary/40 bg-black/50 shrink-0 select-none",
+        "flex items-center justify-center rounded-full overflow-hidden border border-primary/40 shrink-0 select-none",
+        "bg-gradient-to-br from-primary/30 to-accent/20",
         onClick && "cursor-pointer hover:border-primary transition-colors",
         className,
       )}
       style={{ width: size, height: size, minWidth: size }}
       data-testid={`avatar-${name}`}
     >
-      {url ? (
-        <img src={url} alt={name} className="w-full h-full object-cover" />
+      {validUrl ? (
+        <img
+          src={validUrl}
+          alt={name}
+          className="w-full h-full object-cover"
+          onError={e => {
+            // If image fails to load, hide it and show initials
+            (e.currentTarget as HTMLImageElement).style.display = "none";
+            const parent = e.currentTarget.parentElement;
+            if (parent && !parent.querySelector(".avatar-initials")) {
+              const span = document.createElement("span");
+              span.className = cn("avatar-initials font-bold", getFontClass(font));
+              span.style.fontSize = `${Math.max(8, size / 3)}px`;
+              span.textContent = initials;
+              parent.appendChild(span);
+            }
+          }}
+        />
       ) : (
         <span
-          className={cn("text-[10px] font-bold", getFontClass(font))}
+          className={cn("font-bold", getFontClass(font))}
           style={{ fontSize: Math.max(8, size / 3) }}
         >
           {initials}

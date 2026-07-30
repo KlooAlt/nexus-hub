@@ -9,25 +9,17 @@ export function CyberCard({ children, className, title, ...props }: CyberCardPro
   return (
     <div
       className={cn(
-        "relative bg-black/60 border border-border backdrop-blur-sm p-6 overflow-hidden group",
+        "discord-card p-5 overflow-hidden",
         className
       )}
       {...props}
     >
-      {/* Decorative corner accents */}
-      <div className="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-primary/50" />
-      <div className="absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 border-primary/50" />
-      <div className="absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 border-primary/50" />
-      <div className="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-primary/50" />
-
-      {/* Optional Title Header */}
       {title && (
-        <div className="mb-4 flex items-center gap-2 border-b border-border pb-2">
-          <div className="w-2 h-2 bg-primary animate-pulse" />
-          <h3 className="text-lg font-display text-primary tracking-widest">{title}</h3>
+        <div className="mb-4 pb-3 border-b border-border flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-primary" />
+          <h3 className="text-sm font-semibold text-foreground">{title}</h3>
         </div>
       )}
-
       {children}
     </div>
   );

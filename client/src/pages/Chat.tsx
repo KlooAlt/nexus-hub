@@ -20,6 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import { api } from "@shared/routes";
 import { motion, AnimatePresence } from "framer-motion";
 import { ProfileModal, Avatar, getFontClass } from "@/components/ProfileModal";
+import { EmojiButton } from "@/components/EmojiPicker";
 
 // ============================================================
 // CONSTANTS
@@ -1234,10 +1235,11 @@ export default function Chat() {
           </AnimatePresence>
 
           {/* Input */}
-          <div className="border-t border-primary/20 p-4 bg-black/90 flex-shrink-0">
+          <div className="border-t border-border/60 p-3 flex-shrink-0" style={{ background: "hsl(228 7% 20%)" }}>
             <form onSubmit={handleTransmit} className="flex items-center gap-2">
               <button type="button" onClick={() => fileInputRef.current?.click()}
-                className={cn("w-10 h-10 border flex items-center justify-center transition-all flex-shrink-0", uploadFile ? "border-accent bg-accent/10 text-accent" : "border-primary/20 text-primary hover:border-primary")}>
+                className={cn("w-10 h-10 rounded flex items-center justify-center transition-all flex-shrink-0",
+                  uploadFile ? "bg-accent/20 text-accent" : "text-muted-foreground hover:bg-secondary hover:text-foreground")}>
                 <Plus className="w-5 h-5" />
               </button>
 
@@ -1248,24 +1250,28 @@ export default function Chat() {
                 onTouchStart={startVoiceRecord}
                 onTouchEnd={stopVoiceRecord}
                 className={cn(
-                  "w-10 h-10 border flex items-center justify-center flex-shrink-0 transition-all",
+                  "w-10 h-10 rounded flex items-center justify-center flex-shrink-0 transition-all",
                   isRecording
-                    ? "border-red-500 bg-red-500/20 text-red-400 animate-pulse"
-                    : "border-primary/20 text-primary hover:bg-primary/10"
+                    ? "bg-red-500/20 text-red-400 animate-pulse"
+                    : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                 )}
                 title="Hold to record voice message">
                 <Mic className="w-4 h-4" />
               </button>
 
-              <CyberInput
-                value={inputContent}
-                onChange={e => setInputContent(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleTransmit(); } }}
-                placeholder="TRANSMIT_SIGNAL..."
-                className="flex-1 h-10 text-xs font-mono"
-              />
+              <div className="flex-1 relative">
+                <input
+                  value={inputContent}
+                  onChange={e => setInputContent(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleTransmit(); } }}
+                  placeholder="Message..."
+                  className="w-full h-10 bg-input border border-border rounded-lg px-4 pr-12 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/40 focus:border-primary/50 transition-all"
+                />
+              </div>
 
-              <CyberButton type="submit" disabled={!inputContent.trim() && !uploadFile} className="h-10 px-6 flex-shrink-0">
+              <EmojiButton onSelect={emoji => setInputContent(prev => prev + emoji)} />
+
+              <CyberButton type="submit" disabled={!inputContent.trim() && !uploadFile} size="sm" className="h-10 px-4 flex-shrink-0">
                 <Send className="w-4 h-4" />
               </CyberButton>
             </form>

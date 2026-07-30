@@ -1,6 +1,6 @@
 
 import { db } from "./db";
-import { users, accessKeys, searchHistory, messages, groupChats, groupChatMembers, shopItems, userInventory,
+import { users, accessKeys, searchHistory, messages, groupChats, groupChatMembers, shopItems, userInventory, accessRequests, customEmojis,
   type User, type AccessKey, type HistoryItem, type Message,
   type CreateKeyRequest, type CreateHistoryRequest, type CreateMessageRequest
 } from "@shared/schema";
@@ -103,7 +103,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Chat - Return ALL messages the user can see (public + private DMs + group messages)
-  async getMessages(currentUserId: number, recipientId?: number, groupId?: number): Promise<(Message & { senderName: string; replyToContent?: string | null; replyToSenderName?: string | null })[]> {
+  async getMessages(currentUserId: number, recipientId?: number, groupId?: number): Promise<any[]> {
     return await db.select({
       id: messages.id,
       senderId: messages.senderId,
@@ -115,6 +115,9 @@ export class DatabaseStorage implements IStorage {
       replyToId: messages.replyToId,
       createdAt: messages.createdAt,
       senderName: users.username,
+      senderAvatarUrl: users.avatarUrl,
+      senderNickname: users.nickname,
+      senderUsernameFont: users.usernameFont,
       replyToContent: sql<string>`(SELECT content FROM messages WHERE id = ${messages.replyToId})`,
       replyToSenderName: sql<string>`(SELECT u.username FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.id = ${messages.replyToId})`,
     } as any)
@@ -206,6 +209,34 @@ export class DatabaseStorage implements IStorage {
     await db.update(users)
       .set({ decorationId, nameStyleId })
       .where(eq(users.id, userId));
+  }
+
+  // Access Requests
+  async createAccessRequest(data: { name: string; message: string }): Promise<any> {
+    const [req] = await db.insert(accessRequests).values(data).returning();
+    return req;
+  }
+
+  async listAccessRequests(): Promise<any[]> {
+    return await db.select().from(accessRequests).orderBy(desc(accessRequests.createdAt));
+  }
+
+  async updateAccessRequestStatus(id: number, status: string): Promise<void> {
+    await db.update(accessRequests).set({ status }).where(eq(accessRequests.id, id));
+  }
+
+  // Custom Emojis
+  async createCustomEmoji(data: { name: string; url: string; createdBy: number }): Promise<any> {
+    const [emoji] = await db.insert(customEmojis).values(data).returning();
+    return emoji;
+  }
+
+  async listCustomEmojis(): Promise<any[]> {
+    return await db.select().from(customEmojis).orderBy(customEmojis.name);
+  }
+
+  async deleteCustomEmoji(id: number): Promise<void> {
+    await db.delete(customEmojis).where(eq(customEmojis.id, id));
   }
 
   // Groups

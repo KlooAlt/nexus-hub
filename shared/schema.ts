@@ -56,6 +56,24 @@ export const accessKeys = pgTable("access_keys", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Access Requests (public submissions asking for an invite)
+export const accessRequests = pgTable("access_requests", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  message: text("message").notNull(),
+  status: text("status").notNull().default("pending"), // 'pending' | 'approved' | 'rejected'
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Custom Emojis (owner-uploaded PNG/JPEG shown in emoji picker)
+export const customEmojis = pgTable("custom_emojis", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  url: text("url").notNull(), // base64 data URL (png/jpeg/webp)
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Search history
 export const searchHistory = pgTable("search_history", {
   id: serial("id").primaryKey(),
