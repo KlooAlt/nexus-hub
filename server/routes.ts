@@ -194,6 +194,12 @@ export async function registerRoutes(
   app.get(api.chat.list.path, requireAuth, async (req, res) => {
     const recipientId = req.query.recipientId ? Number(req.query.recipientId) : undefined;
     const groupId = req.query.groupId ? Number(req.query.groupId) : undefined;
+    if (recipientId !== undefined && (!Number.isInteger(recipientId) || recipientId <= 0)) {
+      return res.status(400).json({ message: "Invalid recipient" });
+    }
+    if (groupId !== undefined && (!Number.isInteger(groupId) || groupId <= 0)) {
+      return res.status(400).json({ message: "Invalid group" });
+    }
     const messages = await storage.getMessages(req.session.userId!, recipientId, groupId);
     res.json(messages);
   });

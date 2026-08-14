@@ -236,12 +236,15 @@ const TerminalMessage = ({
 // ============================================================
 export default function Chat() {
   const { user: currentUser } = useAuth();
-  const { messages, users, sendMessage } = useChat();
   const { toast } = useToast();
 
   // --- CHANNEL STATE ---
   const [selectedRecipientId, setSelectedRecipientId] = useState<number | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
+  const { messages, users, sendMessage } = useChat({
+    recipientId: selectedRecipientId,
+    groupId: selectedGroupId,
+  });
 
   // --- MODAL STATE ---
   const [showEveryoneList, setShowEveryoneList] = useState(false);

@@ -102,8 +102,29 @@ export class DatabaseStorage implements IStorage {
     await db.delete(searchHistory).where(eq(searchHistory.userId, userId));
   }
 
-  // Chat - Return ALL messages the user can see (public + private DMs + group messages)
+  // Chat - Return only the active channel's recent messages.
+  // Keeping this scoped prevents every poll from downloading all group/DM history
+  // (including potentially very large base64 media payloads).
   async getMessages(currentUserId: number, recipientId?: number, groupId?: number): Promise<any[]> {
+    const channelFilter = groupId
+      ? and(
+          eq(messages.groupId, groupId),
+          sql`EXISTS (
+            SELECT 1 FROM group_chat_members
+            WHERE group_chat_members.group_id = ${groupId}
+              AND group_chat_members.user_id = ${currentUserId}
+          )`,
+        )
+      : recipientId
+        ? and(
+            sql`${messages.groupId} IS NULL`,
+            or(
+              and(eq(messages.senderId, currentUserId), eq(messages.recipientId, recipientId)),
+              and(eq(messages.senderId, recipientId), eq(messages.recipientId, currentUserId)),
+            ),
+          )
+        : sql`${messages.recipientId} IS NULL AND ${messages.groupId} IS NULL`;
+
     return await db.select({
       id: messages.id,
       senderId: messages.senderId,
@@ -123,26 +144,12 @@ export class DatabaseStorage implements IStorage {
     } as any)
     .from(messages)
     .innerJoin(users, eq(messages.senderId, users.id))
-    .where(
-      or(
-        // Public broadcast messages
-        sql`${messages.recipientId} IS NULL AND ${messages.groupId} IS NULL`,
-        // Private DMs where user is sender or recipient
-        and(
-          sql`${messages.groupId} IS NULL`,
-          or(
-            eq(messages.senderId, currentUserId),
-            eq(messages.recipientId, currentUserId)
-          )
-        ),
-        // Group messages where user is a member
-        sql`${messages.groupId} IN (SELECT group_id FROM group_chat_members WHERE user_id = ${currentUserId})`
-      )
-    )
-    .orderBy(messages.createdAt);
+    .where(channelFilter)
+    .orderBy(desc(messages.createdAt), desc(messages.id))
+    .limit(100);
   }
 
-  async getPublicMessages(): Promise<(Message & { senderName: string })[]> {
+  async getPublicMessages(): Promise<any[]> {
     return await db.select({
       id: messages.id,
       senderId: messages.senderId,
