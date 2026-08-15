@@ -1,7 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import type { Express } from "express";
-import path from "node:path";
-import { pathToFileURL } from "node:url";
 
 type AppModule = {
   app: Express;
@@ -12,10 +10,11 @@ let appModulePromise: Promise<AppModule> | undefined;
 
 function loadServerApp(): Promise<AppModule> {
   if (!appModulePromise) {
-    const modulePath = pathToFileURL(
-      path.join(process.cwd(), "dist", "vercel", "server", "app.js"),
-    ).href;
-    appModulePromise = import(modulePath) as Promise<AppModule>;
+    // The server graph is emitted by `tsc -p tsconfig.vercel.json` before
+    // Vercel bundles this function. The generated file is intentionally a
+    // JavaScript import; the source file is TypeScript.
+    // @ts-expect-error Generated during the Vercel build.
+    appModulePromise = import("../dist/vercel/server/app.js") as Promise<AppModule>;
   }
   return appModulePromise;
 }
