@@ -24,28 +24,20 @@ app.use(
 app.use(express.urlencoded({ extended: false }));
 
 let initialized = false;
-let initializationPromise: Promise<void> | null = null;
+let initPromise: Promise<void> | undefined;
 
 async function initialize() {
-  if (initialized) {
-    return;
+  if (initialized) return;
+
+  if (!initPromise) {
+    initPromise = (async () => {
+      await registerRoutes(httpServer, app);
+
+      initialized = true;
+    })();
   }
 
-  if (initializationPromise) {
-    return initializationPromise;
-  }
-
-  initializationPromise = (async () => {
-    await registerRoutes(httpServer, app);
-    initialized = true;
-  })();
-
-  try {
-    await initializationPromise;
-  } catch (error) {
-    initializationPromise = null;
-    throw error;
-  }
+  await initPromise;
 }
 
 export default async function handler(
@@ -57,15 +49,11 @@ export default async function handler(
 
     return app(req, res);
   } catch (error) {
-    console.error("Vercel API initialization error:", error);
+    console.error("API FUNCTION ERROR:", error);
 
     if (!res.headersSent) {
       return res.status(500).json({
-        message: "Server initialization failed",
-        error:
-          process.env.NODE_ENV === "development"
-            ? String(error)
-            : undefined,
+        message: "API initialization failed",
       });
     }
   }
