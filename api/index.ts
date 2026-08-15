@@ -1,55 +1,15 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import express from "express";
-import { createServer } from "http";
-import { registerRoutes } from "../server/routes";
-
-const app = express();
-const httpServer = createServer(app);
-
-declare module "http" {
-  interface IncomingMessage {
-    rawBody: unknown;
-  }
-}
-
-app.use(
-  express.json({
-    limit: "50mb",
-    verify: (req, _res, buf) => {
-      req.rawBody = buf;
-    },
-  }),
-);
-
-app.use(express.urlencoded({ extended: false }));
-
-let initialized = false;
-let initPromise: Promise<void> | undefined;
-
-async function initialize() {
-  if (initialized) return;
-
-  if (!initPromise) {
-    initPromise = (async () => {
-      await registerRoutes(httpServer, app);
-
-      initialized = true;
-    })();
-  }
-
-  await initPromise;
-}
+import { app, initializeApp } from "../server/app";
 
 export default async function handler(
   req: VercelRequest,
   res: VercelResponse,
 ) {
   try {
-    await initialize();
-
+    await initializeApp();
     return app(req, res);
   } catch (error) {
-    console.error("API FUNCTION ERROR:", error);
+    console.error("API initialization failed:", error);
 
     if (!res.headersSent) {
       return res.status(500).json({
