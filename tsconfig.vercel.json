@@ -10,7 +10,9 @@
     "noEmitOnError": true,
     "sourceMap": false,
     "types": ["node"],
-    "baseUrl": "."
+    "baseUrl": ".",
+    "rootDir": ".",
+    "outDir": "dist/vercel"
   },
   "include": [
     "server/app.ts",
