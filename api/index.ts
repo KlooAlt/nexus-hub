@@ -1,13 +1,25 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { app, initializeApp } from "../dist/vercel/server/app.js";
+import { createRequire } from "node:module";
+
+type ServerApp = typeof import("express").default & {
+  (req: VercelRequest, res: VercelResponse): unknown;
+};
+
+type AppModule = {
+  app: ServerApp;
+  initializeApp: () => Promise<void>;
+};
+
+const require = createRequire(import.meta.url);
+const serverApp = require("../dist/vercel/server/app.js") as AppModule;
 
 export default async function handler(
   req: VercelRequest,
   res: VercelResponse,
 ) {
   try {
-    await initializeApp();
-    return app(req, res);
+    await serverApp.initializeApp();
+    return serverApp.app(req, res);
   } catch (error) {
     console.error("API initialization failed:", error);
 
