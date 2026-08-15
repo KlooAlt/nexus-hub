@@ -8,6 +8,10 @@ import {
   Upload,
   Users as UsersIcon,
   Sparkles,
+  UserPlus,
+  UserCheck,
+  ShieldBan,
+  ShieldOff,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -151,6 +155,7 @@ export function ProfileModal({
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<any>({});
   const fileRef = useRef<HTMLInputElement>(null);
+  const bannerFileRef = useRef<HTMLInputElement>(null);
 
   const { data: profile, isLoading } = useQuery<any>({
     queryKey: ["/api/user/profile", userId],
@@ -168,10 +173,61 @@ export function ProfileModal({
         username: profile.username || "",
         nickname: profile.nickname || "",
         bio: profile.bio || "",
+        displayName: profile.displayName || "",
+        pronouns: profile.pronouns || "",
         avatarUrl: profile.avatarUrl || "",
+        bannerUrl: profile.bannerUrl || "",
         usernameFont: profile.usernameFont || "default",
       });
   }, [profile]);
+
+  const { data: relationship, refetch: refetchRelationship } = useQuery<any>({
+    queryKey: ["/api/social/relationship", userId],
+    queryFn: async () => {
+      const r = await fetch(`/api/social/relationship/${userId}`);
+      if (!r.ok) throw new Error("relationship failed");
+      return r.json();
+    },
+    enabled: !!userId && userId !== currentUserId,
+  });
+
+  const friendMut = useMutation({
+    mutationFn: async () => {
+      const isAccepted = relationship?.friendStatus === "accepted";
+      const isIncoming = relationship?.friendStatus === "pending_received";
+      const r = await fetch(
+        `/api/social/friends/${isIncoming ? relationship.friendRequestId : userId}`,
+        {
+          method: isAccepted ? "DELETE" : isIncoming ? "PATCH" : "POST",
+          ...(isIncoming ? {
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "accepted" }),
+          } : {}),
+        },
+      );
+      if (!r.ok) throw new Error((await r.json()).message || "Friend action failed");
+      return r;
+    },
+    onSuccess: () => {
+      refetchRelationship();
+      toast({ title: relationship?.friendStatus === "accepted" ? "FRIEND_REMOVED" : "FRIEND_REQUEST_SENT" });
+    },
+    onError: (e: any) => toast({ title: "FRIEND_ACTION_FAILED", description: e.message, variant: "destructive" }),
+  });
+
+  const blockMut = useMutation({
+    mutationFn: async () => {
+      const method = relationship?.blockedByMe ? "DELETE" : "POST";
+      const r = await fetch(`/api/social/blocks/${userId}`, { method });
+      if (!r.ok) throw new Error((await r.json()).message || "Block action failed");
+      return r;
+    },
+    onSuccess: () => {
+      refetchRelationship();
+      toast({ title: relationship?.blockedByMe ? "USER_UNBLOCKED" : "USER_BLOCKED" });
+    },
+    onError: (e: any) => toast({ title: "BLOCK_ACTION_FAILED", description: e.message, variant: "destructive" }),
+  });
 
   const saveMut = useMutation({
     mutationFn: async () => {
@@ -194,7 +250,7 @@ export function ProfileModal({
     onError: () => toast({ title: "SAVE_FAILED", variant: "destructive" }),
   });
 
-  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, field: "avatarUrl" | "bannerUrl") => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 8 * 1024 * 1024) {
@@ -207,12 +263,12 @@ export function ProfileModal({
     }
     const reader = new FileReader();
     reader.onloadend = () =>
-      setForm((f: any) => ({ ...f, avatarUrl: String(reader.result || "") }));
+      setForm((f: any) => ({ ...f, [field]: String(reader.result || "") }));
     reader.readAsDataURL(file);
   };
 
   const isOwn = profile?.id === currentUserId;
-  const displayName = profile?.nickname || profile?.username;
+  const displayName = profile?.displayName || profile?.nickname || profile?.username;
 
   return (
     <AnimatePresence>
@@ -232,8 +288,15 @@ export function ProfileModal({
             className="bg-black border border-primary/40 rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto shadow-[0_0_40px_rgba(34,197,94,0.3)]"
             data-testid="profile-modal"
           >
-            {/* Header bar */}
-            <div className="h-20 bg-gradient-to-br from-primary/30 via-accent/20 to-fuchsia-500/20 border-b border-primary/30 relative">
+            {/* Profile banner */}
+            <div
+              className="h-24 border-b border-primary/30 relative bg-gradient-to-br from-primary/30 via-accent/20 to-fuchsia-500/20 bg-cover bg-center"
+              style={{
+                backgroundImage: (editing ? form.bannerUrl : profile?.bannerUrl)
+                  ? `linear-gradient(rgba(20,20,30,.2), rgba(20,20,30,.55)), url(${editing ? form.bannerUrl : profile?.bannerUrl})`
+                  : undefined,
+              }}
+            >
               <button
                 onClick={onClose}
                 className="absolute top-2 right-2 p-1.5 bg-black/60 border border-primary/30 rounded hover:border-primary"
@@ -241,6 +304,23 @@ export function ProfileModal({
               >
                 <X className="w-3.5 h-3.5 text-primary" />
               </button>
+              {editing && (
+                <>
+                  <button
+                    onClick={() => bannerFileRef.current?.click()}
+                    className="absolute bottom-2 right-2 flex items-center gap-1 bg-black/70 text-white text-[10px] px-2 py-1 rounded border border-white/20 hover:border-primary"
+                  >
+                    <Upload className="w-3 h-3" /> Change banner
+                  </button>
+                  <input
+                    ref={bannerFileRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={e => handleImageUpload(e, "bannerUrl")}
+                    className="hidden"
+                  />
+                </>
+              )}
             </div>
 
             <div className="p-5 -mt-10">
@@ -272,7 +352,7 @@ export function ProfileModal({
                             ref={fileRef}
                             type="file"
                             accept="image/*,image/gif"
-                            onChange={handleAvatarUpload}
+                            onChange={e => handleImageUpload(e, "avatarUrl")}
                             className="hidden"
                           />
                         </>
@@ -291,6 +371,16 @@ export function ProfileModal({
                       <div className="text-[10px] text-primary/50 font-mono mt-1">
                         @{profile.username}
                       </div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className={cn(
+                          "w-2 h-2 rounded-full",
+                          profile.presenceStatus === "online" ? "bg-green-400" :
+                          profile.presenceStatus === "idle" ? "bg-yellow-400" :
+                          profile.presenceStatus === "dnd" ? "bg-red-400" : "bg-gray-500"
+                        )} />
+                        <span className="text-[10px] text-white/50 capitalize">{profile.presenceStatus || "offline"}</span>
+                        {profile.pronouns && <span className="text-[10px] text-white/40">• {profile.pronouns}</span>}
+                      </div>
                       {profile.role === "owner" && (
                         <div className="inline-flex items-center gap-1 mt-1 text-[9px] text-fuchsia-400 font-mono border border-fuchsia-500/40 px-1.5 py-0.5 rounded">
                           <Sparkles className="w-2.5 h-2.5" /> OWNER
@@ -307,6 +397,34 @@ export function ProfileModal({
                       </button>
                     )}
                   </div>
+
+                  {!isOwn && !editing && (
+                    <div className="flex gap-2 mb-4">
+                      <button
+                        onClick={() => friendMut.mutate()}
+                        disabled={friendMut.isPending || relationship?.blockedMe}
+                        className="flex-1 flex items-center justify-center gap-1.5 text-[10px] font-mono text-primary border border-primary/40 px-2 py-2 rounded hover:bg-primary/10 disabled:opacity-40"
+                      >
+                        {relationship?.friendStatus === "accepted" ? <UserCheck className="w-3 h-3" /> : <UserPlus className="w-3 h-3" />}
+                        {relationship?.friendStatus === "accepted" ? "FRIENDS" :
+                         relationship?.friendStatus === "pending_sent" ? "REQUEST SENT" :
+                         relationship?.friendStatus === "pending_received" ? "ACCEPT REQUEST" : "ADD FRIEND"}
+                      </button>
+                      <button
+                        onClick={() => blockMut.mutate()}
+                        disabled={blockMut.isPending}
+                        className={cn(
+                          "flex items-center justify-center gap-1.5 text-[10px] font-mono px-3 py-2 rounded border",
+                          relationship?.blockedByMe
+                            ? "text-green-400 border-green-400/40 hover:bg-green-400/10"
+                            : "text-red-400 border-red-400/40 hover:bg-red-400/10"
+                        )}
+                      >
+                        {relationship?.blockedByMe ? <ShieldOff className="w-3 h-3" /> : <ShieldBan className="w-3 h-3" />}
+                        {relationship?.blockedByMe ? "UNBLOCK" : "BLOCK"}
+                      </button>
+                    </div>
+                  )}
 
                   {!editing ? (
                     <>
@@ -369,6 +487,24 @@ export function ProfileModal({
                           maxLength={32}
                           className="w-full bg-black border border-primary/30 px-2 py-1.5 text-xs font-mono text-white rounded focus:outline-none focus:border-primary"
                           data-testid="input-nickname"
+                        />
+                      </Field>
+                      <Field label="DISPLAY NAME">
+                        <input
+                          value={form.displayName}
+                          onChange={e => setForm({ ...form, displayName: e.target.value })}
+                          maxLength={32}
+                          placeholder="What people see first"
+                          className="w-full bg-black border border-primary/30 px-2 py-1.5 text-xs font-mono text-white rounded focus:outline-none focus:border-primary"
+                        />
+                      </Field>
+                      <Field label="PRONOUNS">
+                        <input
+                          value={form.pronouns}
+                          onChange={e => setForm({ ...form, pronouns: e.target.value })}
+                          maxLength={32}
+                          placeholder="e.g. they/them"
+                          className="w-full bg-black border border-primary/30 px-2 py-1.5 text-xs font-mono text-white rounded focus:outline-none focus:border-primary"
                         />
                       </Field>
                       <Field label="BIO">

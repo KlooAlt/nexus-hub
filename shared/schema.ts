@@ -23,6 +23,27 @@ export const users = pgTable("users", {
   nickname: text("nickname"),
   avatarUrl: text("avatar_url"),
   usernameFont: text("username_font"),
+  displayName: text("display_name"),
+  pronouns: text("pronouns"),
+  bannerUrl: text("banner_url"),
+  presenceStatus: text("presence_status").notNull().default("offline"), // online | idle | dnd | offline
+  lastSeen: timestamp("last_seen"),
+});
+
+// Social relationships
+export const friendRequests = pgTable("friend_requests", {
+  id: serial("id").primaryKey(),
+  requesterId: integer("requester_id").notNull().references(() => users.id),
+  addresseeId: integer("addressee_id").notNull().references(() => users.id),
+  status: text("status").notNull().default("pending"), // pending | accepted | rejected
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const blocks = pgTable("blocks", {
+  id: serial("id").primaryKey(),
+  blockerId: integer("blocker_id").notNull().references(() => users.id),
+  blockedId: integer("blocked_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 // Shop Items (Decorations and Name Stylers)

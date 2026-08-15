@@ -28,7 +28,7 @@ export interface IStorage {
   getMessages(currentUserId: number, recipientId?: number, groupId?: number): Promise<(Message & { senderName: string })[]>;
   getPublicMessages(): Promise<(Message & { senderName: string })[]>;
   createMessage(msg: { senderId: number; recipientId?: number | null; groupId?: number | null; content: string }): Promise<Message>;
-  getAllUsers(): Promise<User[]>;
+  getAllUsers(): Promise<any[]>;
 
   // Shop & Decorations
   getShopItems(): Promise<any[]>;
@@ -124,6 +124,14 @@ export class DatabaseStorage implements IStorage {
             ),
           )
         : sql`${messages.recipientId} IS NULL AND ${messages.groupId} IS NULL`;
+    const visibleFilter = and(
+      channelFilter,
+      sql`NOT EXISTS (
+        SELECT 1 FROM blocks
+        WHERE (blocks.blocker_id = ${currentUserId} AND blocks.blocked_id = ${messages.senderId})
+           OR (blocks.blocker_id = ${messages.senderId} AND blocks.blocked_id = ${currentUserId})
+      )`,
+    );
 
     return await db.select({
       id: messages.id,
@@ -131,20 +139,26 @@ export class DatabaseStorage implements IStorage {
       recipientId: messages.recipientId,
       groupId: messages.groupId,
       content: messages.content,
-      mediaUrl: messages.mediaUrl,
+      // Attachments are intentionally lazy-loaded via /api/chat/messages/:id/media.
+      // Returning base64 blobs here made a normal chat open tens of megabytes.
+      mediaUrl: sql<string | null>`NULL`,
       mediaType: messages.mediaType,
+      hasMedia: sql<boolean>`(${messages.mediaUrl} IS NOT NULL AND length(${messages.mediaUrl}) > 0)`,
       replyToId: messages.replyToId,
       createdAt: messages.createdAt,
       senderName: users.username,
+      senderDisplayName: users.displayName,
       senderAvatarUrl: users.avatarUrl,
       senderNickname: users.nickname,
+      senderPronouns: users.pronouns,
+      senderPresenceStatus: users.presenceStatus,
       senderUsernameFont: users.usernameFont,
       replyToContent: sql<string>`(SELECT content FROM messages WHERE id = ${messages.replyToId})`,
       replyToSenderName: sql<string>`(SELECT u.username FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.id = ${messages.replyToId})`,
     } as any)
     .from(messages)
     .innerJoin(users, eq(messages.senderId, users.id))
-    .where(channelFilter)
+    .where(visibleFilter)
     .orderBy(desc(messages.createdAt), desc(messages.id))
     .limit(100);
   }
@@ -172,8 +186,21 @@ export class DatabaseStorage implements IStorage {
     return message;
   }
 
-  async getAllUsers(): Promise<User[]> {
-    return await db.select().from(users);
+  async getAllUsers(): Promise<any[]> {
+    // Never send serial keys or other private/account fields to the chat client.
+    return await db.select({
+      id: users.id,
+      username: users.username,
+      displayName: users.displayName,
+      nickname: users.nickname,
+      pronouns: users.pronouns,
+      avatarUrl: users.avatarUrl,
+      bannerUrl: users.bannerUrl,
+      usernameFont: users.usernameFont,
+      role: users.role,
+      presenceStatus: users.presenceStatus,
+      lastSeen: users.lastSeen,
+    }).from(users).orderBy(users.username);
   }
 
   // Shop & Decorations implementation

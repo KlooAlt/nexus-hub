@@ -13,6 +13,7 @@ import History from "@/pages/History";
 import Admin from "@/pages/Admin";
 import Shop from "@/pages/Shop";
 import NotFound from "@/pages/not-found";
+import SettingsPage from "@/pages/Settings";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -55,6 +56,9 @@ function Router() {
       </Route>
       <Route path="/shop">
         <ProtectedRoute component={Shop} />
+      </Route>
+      <Route path="/settings">
+        <ProtectedRoute component={SettingsPage} />
       </Route>
       <Route component={NotFound} />
     </Switch>

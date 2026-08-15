@@ -1,6 +1,6 @@
 
 import { db } from "./db";
-import { users, accessKeys, searchHistory, messages, groupChats, groupChatMembers, customEmojis } from "@shared/schema";
+import { users, accessKeys, searchHistory, messages, groupChats, groupChatMembers, customEmojis, friendRequests, blocks } from "@shared/schema";
 import { eq, desc, and, or, gt, sql } from "drizzle-orm";
 import type { Express, Request } from "express";
 import type { Server } from "http";
@@ -13,6 +13,7 @@ import { randomBytes } from "crypto";
 
 const MemoryStore = createMemoryStore(session);
 const OWNER_KEY = "TSHSKDB163)#(";
+const PRESENCE_STATUSES = ["online", "idle", "dnd", "offline"] as const;
 
 // Extend session type
 declare module "express-session" {
@@ -52,6 +53,22 @@ export async function registerRoutes(
       return res.status(403).json({ message: "Forbidden: Owner access only" });
     }
     next();
+  };
+
+  const blockedEitherWay = async (userId: number, otherId: number) => {
+    const [block] = await db.select({ id: blocks.id }).from(blocks).where(
+      or(
+        and(eq(blocks.blockerId, userId), eq(blocks.blockedId, otherId)),
+        and(eq(blocks.blockerId, otherId), eq(blocks.blockedId, userId)),
+      ),
+    ).limit(1);
+    return !!block;
+  };
+
+  const safeUser = (user: any) => {
+    if (!user) return user;
+    const { serialKey: _serialKey, ...safe } = user;
+    return safe;
   };
 
   // === AUTH ===
@@ -111,8 +128,12 @@ export async function registerRoutes(
       // Set session
       req.session.userId = user.id;
       req.session.role = user.role;
+      await db.update(users).set({
+        presenceStatus: "online",
+        lastSeen: new Date(),
+      }).where(eq(users.id, user.id));
       
-      res.json(user);
+      res.json(safeUser({ ...user, presenceStatus: "online", lastSeen: new Date() }));
     } catch (err) {
       console.error(err);
       res.status(500).json({ message: "Login failed" });
@@ -121,10 +142,18 @@ export async function registerRoutes(
 
   app.get(api.auth.me.path, requireAuth, async (req, res) => {
     const user = await storage.getUser(req.session.userId!);
-    res.json(user);
+    if (user) {
+      await db.update(users).set({ lastSeen: new Date() }).where(eq(users.id, user.id));
+    }
+    res.json(safeUser(user));
   });
 
   app.post(api.auth.logout.path, (req, res) => {
+    const userId = req.session.userId;
+    if (userId) {
+      db.update(users).set({ presenceStatus: "offline", lastSeen: new Date() })
+        .where(eq(users.id, userId)).catch(console.error);
+    }
     req.session.destroy(() => {
       res.json({ message: "Logged out" });
     });
@@ -206,6 +235,24 @@ export async function registerRoutes(
 
   app.post(api.chat.send.path, requireAuth, async (req, res) => {
     const input = api.chat.send.input.parse(req.body);
+    if (input.recipientId && input.groupId) {
+      return res.status(400).json({ message: "Choose a DM or a channel, not both" });
+    }
+    if (input.recipientId) {
+      if (input.recipientId === req.session.userId) {
+        return res.status(400).json({ message: "You cannot DM yourself" });
+      }
+      if (await blockedEitherWay(req.session.userId!, input.recipientId)) {
+        return res.status(403).json({ message: "Messaging is unavailable for this user" });
+      }
+    }
+    if (input.groupId) {
+      const [membership] = await db.select({ id: groupChatMembers.id })
+        .from(groupChatMembers)
+        .where(and(eq(groupChatMembers.groupId, input.groupId), eq(groupChatMembers.userId, req.session.userId!)))
+        .limit(1);
+      if (!membership) return res.status(403).json({ message: "You are not a member of this channel" });
+    }
     const message = await storage.createMessage({
       senderId: req.session.userId!,
       recipientId: input.recipientId,
@@ -216,6 +263,37 @@ export async function registerRoutes(
       replyToId: (req.body as any).replyToId ?? null,
     });
     res.status(201).json(message);
+  });
+
+  app.get('/api/chat/messages/:id/media', requireAuth, async (req, res) => {
+    const messageId = Number(req.params.id);
+    if (!Number.isInteger(messageId)) return res.status(400).json({ message: 'Invalid message' });
+
+    const [message] = await db.select({
+      id: messages.id,
+      senderId: messages.senderId,
+      recipientId: messages.recipientId,
+      groupId: messages.groupId,
+      mediaUrl: messages.mediaUrl,
+      mediaType: messages.mediaType,
+    }).from(messages).where(eq(messages.id, messageId)).limit(1);
+    if (!message || !message.mediaUrl) return res.status(404).json({ message: 'Attachment not found' });
+
+    let allowed = !message.recipientId && !message.groupId;
+    if (message.recipientId) {
+      allowed = message.senderId === req.session.userId || message.recipientId === req.session.userId;
+    }
+    if (message.groupId) {
+      const [membership] = await db.select({ id: groupChatMembers.id })
+        .from(groupChatMembers)
+        .where(and(eq(groupChatMembers.groupId, message.groupId), eq(groupChatMembers.userId, req.session.userId!)))
+        .limit(1);
+      allowed = !!membership;
+    }
+    if (allowed && await blockedEitherWay(req.session.userId!, message.senderId)) allowed = false;
+    if (!allowed) return res.status(403).json({ message: 'Attachment unavailable' });
+
+    res.json({ mediaUrl: message.mediaUrl, mediaType: message.mediaType });
   });
 
   app.delete('/api/chat/messages/:id', requireAuth, async (req, res) => {
@@ -265,11 +343,23 @@ export async function registerRoutes(
   });
 
   app.patch("/api/user/settings", requireAuth, async (req, res) => {
-    const { ringtoneUrl, muteNotifications } = req.body;
-    await db.update(users)
-      .set({ ringtoneUrl, muteNotifications })
-      .where(eq(users.id, req.session.userId!));
-    res.json({ success: true });
+    const update: any = {};
+    const { ringtoneUrl, muteNotifications, presenceStatus } = req.body;
+    if (ringtoneUrl !== undefined) {
+      update.ringtoneUrl = ringtoneUrl ? String(ringtoneUrl).slice(0, 500) : null;
+    }
+    if (muteNotifications !== undefined) {
+      update.muteNotifications = Boolean(muteNotifications);
+    }
+    if (presenceStatus !== undefined && PRESENCE_STATUSES.includes(presenceStatus)) {
+      update.presenceStatus = presenceStatus;
+    }
+    if (Object.keys(update).length) {
+      update.lastSeen = new Date();
+      await db.update(users).set(update).where(eq(users.id, req.session.userId!));
+    }
+    const updated = await storage.getUser(req.session.userId!);
+    res.json(safeUser(updated));
   });
 
   // === USER PROFILE ===
@@ -295,12 +385,15 @@ export async function registerRoutes(
 
   app.patch("/api/user/profile", requireAuth, async (req, res) => {
     try {
-      const { username, nickname, bio, avatarUrl, usernameFont } = req.body;
+      const { username, nickname, displayName, bio, pronouns, avatarUrl, bannerUrl, usernameFont } = req.body;
       const update: any = {};
       if (typeof username === 'string' && username.trim().length > 0) update.username = username.trim().slice(0, 32);
       if (nickname !== undefined) update.nickname = nickname ? String(nickname).slice(0, 32) : null;
+      if (displayName !== undefined) update.displayName = displayName ? String(displayName).slice(0, 32) : null;
       if (bio !== undefined) update.bio = bio ? String(bio).slice(0, 500) : null;
+      if (pronouns !== undefined) update.pronouns = pronouns ? String(pronouns).slice(0, 32) : null;
       if (avatarUrl !== undefined) update.avatarUrl = typeof avatarUrl === 'string' && avatarUrl.length > 0 ? avatarUrl : null;
+      if (bannerUrl !== undefined) update.bannerUrl = typeof bannerUrl === 'string' && bannerUrl.length > 0 ? bannerUrl : null;
       if (usernameFont !== undefined) update.usernameFont = usernameFont || null;
       // Always ensure at least one field
       if (Object.keys(update).length === 0) return res.json({ success: true });
@@ -317,6 +410,114 @@ export async function registerRoutes(
   app.get(api.chat.users.path, requireAuth, async (req, res) => {
     const usersList = await storage.getAllUsers();
     res.json(usersList);
+  });
+
+  // === FRIENDS & BLOCKS ===
+  app.get("/api/social/relationship/:id", requireAuth, async (req, res) => {
+    const targetId = Number(req.params.id);
+    if (!Number.isInteger(targetId) || targetId === req.session.userId) {
+      return res.status(400).json({ message: "Invalid user" });
+    }
+    const [request] = await db.select().from(friendRequests).where(or(
+      and(eq(friendRequests.requesterId, req.session.userId!), eq(friendRequests.addresseeId, targetId)),
+      and(eq(friendRequests.requesterId, targetId), eq(friendRequests.addresseeId, req.session.userId!)),
+    )).orderBy(desc(friendRequests.id)).limit(1);
+    const [myBlock] = await db.select({ id: blocks.id }).from(blocks)
+      .where(and(eq(blocks.blockerId, req.session.userId!), eq(blocks.blockedId, targetId))).limit(1);
+    const [theirBlock] = await db.select({ id: blocks.id }).from(blocks)
+      .where(and(eq(blocks.blockerId, targetId), eq(blocks.blockedId, req.session.userId!))).limit(1);
+    const blockedByMe = !!myBlock;
+    const blockedMe = !!theirBlock;
+    let friendStatus = "none";
+    if (request?.status === "accepted") friendStatus = "accepted";
+    else if (request?.status === "pending") {
+      friendStatus = request.requesterId === req.session.userId ? "pending_sent" : "pending_received";
+    }
+    res.json({ friendStatus, friendRequestId: request?.id ?? null, blockedByMe, blockedMe });
+  });
+
+  app.get("/api/social/friends", requireAuth, async (req, res) => {
+    const rows = await db.select().from(friendRequests).where(or(
+      and(eq(friendRequests.requesterId, req.session.userId!), eq(friendRequests.status, "accepted")),
+      and(eq(friendRequests.addresseeId, req.session.userId!), eq(friendRequests.status, "accepted")),
+    )).orderBy(desc(friendRequests.createdAt));
+    const friendIds = rows.map(row => row.requesterId === req.session.userId ? row.addresseeId : row.requesterId);
+    const friendUsers = friendIds.length
+      ? await db.select({
+          id: users.id, username: users.username, displayName: users.displayName,
+          nickname: users.nickname, avatarUrl: users.avatarUrl, presenceStatus: users.presenceStatus,
+          pronouns: users.pronouns,
+        }).from(users).where(sql`${users.id} IN (${sql.join(friendIds.map(id => sql`${id}`), sql`, `)})`)
+      : [];
+    res.json(friendUsers);
+  });
+
+  app.post("/api/social/friends/:id", requireAuth, async (req, res) => {
+    const targetId = Number(req.params.id);
+    if (!Number.isInteger(targetId) || targetId === req.session.userId) {
+      return res.status(400).json({ message: "Invalid user" });
+    }
+    if (await blockedEitherWay(req.session.userId!, targetId)) {
+      return res.status(403).json({ message: "Unblock this user before sending a request" });
+    }
+    const [existing] = await db.select().from(friendRequests).where(or(
+      and(eq(friendRequests.requesterId, req.session.userId!), eq(friendRequests.addresseeId, targetId)),
+      and(eq(friendRequests.requesterId, targetId), eq(friendRequests.addresseeId, req.session.userId!)),
+    )).orderBy(desc(friendRequests.id)).limit(1);
+    if (existing?.status === "accepted") return res.json(existing);
+    if (existing?.status === "pending") return res.json(existing);
+    const [request] = await db.insert(friendRequests).values({
+      requesterId: req.session.userId!, addresseeId: targetId, status: "pending",
+    }).returning();
+    res.status(201).json(request);
+  });
+
+  app.patch("/api/social/friends/:requestId", requireAuth, async (req, res) => {
+    const requestId = Number(req.params.requestId);
+    const status = req.body?.status;
+    if (!["accepted", "rejected"].includes(status)) return res.status(400).json({ message: "Invalid status" });
+    const [request] = await db.select().from(friendRequests)
+      .where(and(eq(friendRequests.id, requestId), eq(friendRequests.addresseeId, req.session.userId!), eq(friendRequests.status, "pending")));
+    if (!request) return res.status(404).json({ message: "Friend request not found" });
+    const [updated] = await db.update(friendRequests).set({ status }).where(eq(friendRequests.id, requestId)).returning();
+    res.json(updated);
+  });
+
+  app.delete("/api/social/friends/:id", requireAuth, async (req, res) => {
+    const targetId = Number(req.params.id);
+    await db.delete(friendRequests).where(and(
+      or(
+        and(eq(friendRequests.requesterId, req.session.userId!), eq(friendRequests.addresseeId, targetId)),
+        and(eq(friendRequests.requesterId, targetId), eq(friendRequests.addresseeId, req.session.userId!)),
+      ),
+      eq(friendRequests.status, "accepted"),
+    ));
+    res.status(204).send();
+  });
+
+  app.get("/api/social/blocks", requireAuth, async (req, res) => {
+    const rows = await db.select({
+      id: blocks.id, userId: users.id, username: users.username,
+      displayName: users.displayName, avatarUrl: users.avatarUrl,
+    }).from(blocks).innerJoin(users, eq(blocks.blockedId, users.id))
+      .where(eq(blocks.blockerId, req.session.userId!)).orderBy(desc(blocks.createdAt));
+    res.json(rows);
+  });
+
+  app.post("/api/social/blocks/:id", requireAuth, async (req, res) => {
+    const targetId = Number(req.params.id);
+    if (!Number.isInteger(targetId) || targetId === req.session.userId) return res.status(400).json({ message: "Invalid user" });
+    await db.insert(blocks).values({ blockerId: req.session.userId!, blockedId: targetId }).onConflictDoNothing();
+    await db.delete(friendRequests).where(or(
+      and(eq(friendRequests.requesterId, req.session.userId!), eq(friendRequests.addresseeId, targetId)),
+      and(eq(friendRequests.requesterId, targetId), eq(friendRequests.addresseeId, req.session.userId!)),
+    ));
+    res.status(201).json({ success: true });
+  });
+
+  app.delete("/api/social/blocks/:id", requireAuth, async (req, res) => {
+    await db.delete(blocks).where(and(eq(blocks.blockerId, req.session.userId!), eq(blocks.blockedId, Number(req.params.id))));
+    res.status(204).send();
   });
 
   // === SHOP ===

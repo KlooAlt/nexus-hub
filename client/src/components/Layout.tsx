@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { Globe, MessageSquare, History, ShieldAlert, LogOut, Menu, X, Cpu } from "lucide-react";
+import { Globe, MessageSquare, History, ShieldAlert, LogOut, Menu, X, Cpu, Settings } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { Avatar } from "./ProfileModal";
@@ -14,6 +14,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { href: "/proxy",   label: "Net Proxy",    icon: Globe },
     { href: "/chat",    label: "Messages",      icon: MessageSquare },
     { href: "/history", label: "History",       icon: History },
+    { href: "/settings", label: "Settings",     icon: Settings },
   ];
 
   if (user?.role === "owner") {
@@ -93,7 +94,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 "text-[10px]",
                 user?.role === "owner" ? "text-amber-400" : "text-green-400"
               )}>
-                {user?.role === "owner" ? "Owner" : "Member"} • Online
+                {user?.role === "owner" ? "Owner" : "Member"} • {user?.presenceStatus || "offline"}
               </div>
             </div>
           </div>

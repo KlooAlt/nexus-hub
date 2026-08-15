@@ -48,12 +48,34 @@ interface IncomingCall { fromId: number; fromName: string; callId: string; }
 type CallState = 'idle' | 'requesting' | 'incoming' | 'connected';
 interface LogEntry { id: string; time: string; type: 'info' | 'warn' | 'crit'; msg: string; }
 
+function MessageContent({ content }: { content: string }) {
+  return (
+    <>
+      {content.split(/(@[a-zA-Z0-9_.-]+)/g).map((part, index) =>
+        part.startsWith("@") ? (
+          <span key={index} className="text-primary font-semibold bg-primary/10 rounded px-0.5">
+            {part}
+          </span>
+        ) : (
+          <span key={index}>{part}</span>
+        )
+      )}
+    </>
+  );
+}
+
 // ============================================================
 // SIDEBAR NODE
 // ============================================================
 const CyberSidebarNode = ({
-  label, isActive, onClick, isOnline = true
-}: { label: string; isActive: boolean; onClick: () => void; isOnline?: boolean }) => (
+  label, isActive, onClick, status = "online"
+}: { label: string; isActive: boolean; onClick: () => void; status?: string }) => {
+  const statusClass =
+    status === "online" ? "bg-green-400 shadow-[0_0_8px_#57f287]" :
+    status === "idle" ? "bg-yellow-400 shadow-[0_0_8px_#fee75c]" :
+    status === "dnd" ? "bg-red-400 shadow-[0_0_8px_#ed4245]" :
+    "bg-gray-500";
+  return (
   <motion.button
     whileHover={{ x: 4 }}
     whileTap={{ scale: 0.98 }}
@@ -66,14 +88,82 @@ const CyberSidebarNode = ({
     )}
   >
     <div className="flex items-center gap-3">
-      <div className={cn("w-2 h-2 rounded-full", isOnline ? "bg-green-500 shadow-[0_0_8px_#22c55e]" : "bg-red-500/50", isActive && "animate-pulse")} />
+       <div className={cn("w-2 h-2 rounded-full", statusClass, isActive && status === "online" && "animate-pulse")} />
       <span className={cn("font-mono text-[12px] tracking-[0.05em] uppercase", isActive ? "text-primary font-bold" : "text-primary/70")}>
         {label}
       </span>
     </div>
     <ChevronRight className={cn("w-3 h-3 transition-all", isActive ? "text-primary opacity-100" : "opacity-0 group-hover:opacity-40")} />
   </motion.button>
-);
+  );
+};
+
+function LazyMediaAttachment({
+  message,
+  onPreview,
+}: {
+  message: any;
+  onPreview: (preview: MediaPreview) => void;
+}) {
+  const [mediaUrl, setMediaUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
+
+  const loadMedia = async () => {
+    if (mediaUrl || loading) return;
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/chat/messages/${message.id}/media`);
+      if (!response.ok) throw new Error("Attachment unavailable");
+      const data = await response.json();
+      setMediaUrl(data.mediaUrl);
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!mediaUrl) {
+    return (
+      <button
+        type="button"
+        onClick={loadMedia}
+        disabled={loading || error}
+        className="mt-2 flex items-center gap-2 rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-[10px] text-primary hover:bg-primary/10 disabled:opacity-50"
+      >
+        {loading ? "Loading attachment..." : error ? "Attachment unavailable" : `Load ${message.mediaType || "attachment"}`}
+      </button>
+    );
+  }
+
+  if (message.mediaType === "image") {
+    return (
+      <img
+        src={mediaUrl}
+        alt="media"
+        onClick={() => onPreview({ url: mediaUrl, type: "image", name: "IMAGE" })}
+        className="mt-2 max-w-full max-h-60 object-contain cursor-zoom-in hover:brightness-110 transition-all rounded"
+      />
+    );
+  }
+  if (message.mediaType === "video") {
+    return <video src={mediaUrl} controls className="mt-2 max-w-full max-h-60 w-full rounded" preload="metadata" />;
+  }
+  if (message.mediaType === "audio") {
+    return (
+      <div className="mt-2 flex items-center gap-3">
+        <Music className="w-4 h-4 text-primary shrink-0" />
+        <audio src={mediaUrl} controls className="h-8 flex-1 accent-primary" />
+      </div>
+    );
+  }
+  return (
+    <a href={mediaUrl} download className="mt-2 inline-flex items-center gap-2 text-[10px] font-mono text-primary underline">
+      <Box className="w-4 h-4" /> Download file
+    </a>
+  );
+}
 
 // ============================================================
 // TERMINAL MESSAGE
@@ -89,7 +179,7 @@ const TerminalMessage = ({
   onProfileClick: (id: number) => void;
 }) => {
   const [showActions, setShowActions] = useState(false);
-  const displayName = msg.senderNickname || msg.senderName;
+  const displayName = msg.senderDisplayName || msg.senderNickname || msg.senderName;
 
   if (msg.mediaType === 'sfx') {
     return (
@@ -103,7 +193,10 @@ const TerminalMessage = ({
   }
 
   const getMediaSection = () => {
-    if (!msg.mediaUrl) return null;
+    if (!msg.mediaUrl && !msg.hasMedia) return null;
+    if (!msg.mediaUrl) {
+      return <LazyMediaAttachment message={msg} onPreview={onMediaPreview} />;
+    }
     const type = msg.mediaType || '';
     return (
       <div className="mt-3 rounded border border-white/5 overflow-hidden bg-black/40 max-w-xs">
@@ -193,7 +286,7 @@ const TerminalMessage = ({
             </div>
           </div>
         )}
-        {displayContent && <div className="whitespace-pre-wrap leading-relaxed select-text break-words">{displayContent}</div>}
+        {displayContent && <div className="whitespace-pre-wrap leading-relaxed select-text break-words"><MessageContent content={displayContent} /></div>}
         {getMediaSection()}
 
         <AnimatePresence>
@@ -386,7 +479,15 @@ export default function Chat() {
     }).sort((a: any, b: any) => new Date(a.createdAt!).getTime() - new Date(b.createdAt!).getTime())
     .map((m: any) => {
       const u = usersMap.get(m.senderId);
-      return { ...m, senderAvatarUrl: u?.avatarUrl ?? null, senderNickname: u?.nickname ?? null, senderUsernameFont: u?.usernameFont ?? null };
+      return {
+        ...m,
+        senderDisplayName: u?.displayName ?? null,
+        senderAvatarUrl: u?.avatarUrl ?? null,
+        senderNickname: u?.nickname ?? null,
+        senderPronouns: u?.pronouns ?? null,
+        senderPresenceStatus: u?.presenceStatus ?? "offline",
+        senderUsernameFont: u?.usernameFont ?? null,
+      };
     });
   }, [messages, selectedGroupId, selectedRecipientId, currentUser?.id, usersMap]);
 
@@ -817,12 +918,29 @@ export default function Chat() {
   // ============================================================
   const activeChannelName = useMemo(() => {
     if (selectedGroupId) return (groups as any[]).find((g: any) => g.id === selectedGroupId)?.name || "GROUP";
-    if (selectedRecipientId) return users?.find((u: any) => u.id === selectedRecipientId)?.username || "PRIVATE";
-    return "BROADCAST_HUB";
+    if (selectedRecipientId) {
+      const user = users?.find((u: any) => u.id === selectedRecipientId);
+      return user?.displayName || user?.nickname || user?.username || "PRIVATE";
+    }
+    return "general";
   }, [selectedGroupId, selectedRecipientId, groups, users]);
 
-  const filteredUsers = users?.filter((u: any) => u.id !== currentUser?.id && u.username.toLowerCase().includes(searchTerm.toLowerCase()));
+  const filteredUsers = users?.filter((u: any) => {
+    const searchable = `${u.displayName || ""} ${u.nickname || ""} ${u.username}`.toLowerCase();
+    return u.id !== currentUser?.id && searchable.includes(searchTerm.toLowerCase());
+  });
   const filteredGroups = (groups as any[]).filter((g: any) => g.name.toLowerCase().includes(searchTerm.toLowerCase()));
+  const mentionMatch = inputContent.match(/(?:^|\s)@([^\s@]*)$/);
+  const mentionCandidates = mentionMatch
+    ? (users || []).filter((u: any) => {
+        const searchable = `${u.username} ${u.displayName || ""} ${u.nickname || ""}`.toLowerCase();
+        return u.id !== currentUser?.id && searchable.includes((mentionMatch[1] || "").toLowerCase());
+      }).slice(0, 6)
+    : [];
+
+  const insertMention = (username: string) => {
+    setInputContent(prev => prev.replace(/(?:^|\s)@([^\s@]*)$/, match => `${match.slice(0, match.lastIndexOf("@"))}@${username} `));
+  };
 
   // ============================================================
   // RENDER
@@ -1078,10 +1196,8 @@ export default function Chat() {
               className="w-72 flex-shrink-0 flex flex-col bg-black border border-primary/20 overflow-hidden">
               <div className="p-4 border-b border-primary/20 bg-primary/5">
                 <div className="flex items-center justify-between">
-                  <h2 className="font-display text-[11px] tracking-[0.4em] uppercase text-primary">Network_Dirs</h2>
+                  <h2 className="font-display text-[11px] tracking-[0.4em] uppercase text-primary">NEXUS SERVER</h2>
                   <div className="flex gap-1">
-                    <button onClick={() => setShowCreateGroupModal(true)} className="p-1 hover:text-accent text-primary/40 transition-colors" title="Create Group"><Plus className="w-4 h-4" /></button>
-                    <button onClick={() => setShowJoinGroupModal(true)} className="p-1 hover:text-accent text-primary/40 transition-colors" title="Join Group"><UserPlus className="w-4 h-4" /></button>
                     <button onClick={() => setIsSidebarOpen(false)} className="p-1 hover:text-white text-primary/20 transition-colors"><X className="w-4 h-4" /></button>
                   </div>
                 </div>
@@ -1092,26 +1208,26 @@ export default function Chat() {
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-primary/30" />
                   <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
                     className="w-full bg-black border border-primary/10 pl-8 pr-3 py-1.5 text-[10px] font-mono text-primary outline-none focus:border-primary/40"
-                    placeholder="Filter nodes..." />
+                    placeholder="Find a conversation or person..." />
                 </div>
               </div>
 
               <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                <CyberSidebarNode label="BROADCAST_HUB" isActive={!selectedRecipientId && !selectedGroupId} onClick={selectBroadcast} />
+                <CyberSidebarNode label="# general" isActive={!selectedRecipientId && !selectedGroupId} onClick={selectBroadcast} status="online" />
                 <div className="pt-2 pb-1 px-3 text-[8px] font-bold text-primary/30 uppercase tracking-widest flex items-center gap-2">
-                  <span className="w-2 h-px bg-primary/20 flex-1" /> DMs <span className="w-2 h-px bg-primary/20 flex-1" />
+                  <span className="w-2 h-px bg-primary/20 flex-1" /> DIRECT MESSAGES <span className="w-2 h-px bg-primary/20 flex-1" />
                 </div>
                 {filteredUsers?.map((u: any) => (
-                  <CyberSidebarNode key={u.id} label={u.username} isActive={selectedRecipientId === u.id} onClick={() => selectPrivateNode(u.id)} />
+                  <CyberSidebarNode
+                    key={u.id}
+                    label={u.displayName || u.nickname || u.username}
+                    status={u.presenceStatus || "offline"}
+                    isActive={selectedRecipientId === u.id}
+                    onClick={() => selectPrivateNode(u.id)}
+                  />
                 ))}
-                <div className="pt-2 pb-1 px-3 text-[8px] font-bold text-primary/30 uppercase tracking-widest flex items-center gap-2">
-                  <span className="w-2 h-px bg-primary/20 flex-1" /> GROUPS <span className="w-2 h-px bg-primary/20 flex-1" />
-                </div>
-                {filteredGroups.map((g: any) => (
-                  <CyberSidebarNode key={g.id} label={g.name} isActive={selectedGroupId === g.id} onClick={() => selectGroupNode(g.id)} />
-                ))}
-                {filteredGroups.length === 0 && !searchTerm && (
-                  <div className="px-4 py-2 text-[9px] font-mono text-primary/20 italic">No groups yet. Create or join one.</div>
+                {filteredUsers?.length === 0 && (
+                  <div className="px-4 py-3 text-[9px] font-mono text-primary/30 italic">No people found.</div>
                 )}
               </div>
 
@@ -1270,6 +1386,25 @@ export default function Chat() {
                   placeholder="Message..."
                   className="w-full h-10 bg-input border border-border rounded-lg px-4 pr-12 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/40 focus:border-primary/50 transition-all"
                 />
+                {mentionCandidates.length > 0 && (
+                  <div className="absolute bottom-12 left-0 right-0 z-40 rounded-lg border border-border bg-[hsl(225_7%_15%)] shadow-2xl overflow-hidden">
+                    <div className="px-3 py-1.5 text-[10px] uppercase tracking-widest text-muted-foreground border-b border-border">
+                      Mention someone
+                    </div>
+                    {mentionCandidates.map((u: any) => (
+                      <button
+                        key={u.id}
+                        type="button"
+                        onClick={() => insertMention(u.username)}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-secondary/70 transition-colors"
+                      >
+                        <Avatar url={u.avatarUrl} name={u.username} size={22} />
+                        <span className="text-sm text-foreground">{u.displayName || u.nickname || u.username}</span>
+                        <span className="text-xs text-muted-foreground">@{u.username}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <EmojiButton onSelect={emoji => setInputContent(prev => prev + emoji)} />
