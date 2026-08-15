@@ -5,6 +5,8 @@ import { registerRoutes } from "./routes";
 export const app = express();
 export const httpServer = createServer(app);
 
+app.set("trust proxy", 1);
+
 declare module "http" {
   interface IncomingMessage {
     rawBody: unknown;
@@ -62,7 +64,13 @@ let initPromise: Promise<void> | undefined;
 
 export function initializeApp(): Promise<void> {
   if (!initPromise) {
-    initPromise = registerRoutes(httpServer, app).then(() => {
+    initPromise = (async () => {
+      if (process.env.NODE_ENV === "production" && !process.env.SESSION_SECRET) {
+        throw new Error("SESSION_SECRET must be set in production.");
+      }
+
+      await registerRoutes(httpServer, app);
+
       app.use(
         (
           err: any,
@@ -82,7 +90,7 @@ export function initializeApp(): Promise<void> {
           return res.status(status).json({ message });
         },
       );
-    });
+    })();
   }
 
   return initPromise;
