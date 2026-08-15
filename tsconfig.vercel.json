@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": false,
+    "noEmitOnError": true,
+    "sourceMap": false,
+    "types": ["node"],
+    "baseUrl": "."
+  },
+  "include": [
+    "server/app.ts",
+    "server/routes.ts",
+    "server/db.ts",
+    "server/storage.ts",
+    "server/session-store.ts",
+    "shared/schema.ts",
+    "shared/routes.ts"
+  ]
+}
