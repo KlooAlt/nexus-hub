@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: nexus-hub
+    runtime: node
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+      - key: OWNER_KEY
+        sync: false
