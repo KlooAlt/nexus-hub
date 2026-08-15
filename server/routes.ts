@@ -12,7 +12,7 @@ import createMemoryStore from "memorystore";
 import { randomBytes } from "crypto";
 
 const MemoryStore = createMemoryStore(session);
-const OWNER_KEY = "TSHSKDB163)#(";
+const OWNER_KEY = "adammalik1234674";
 const PRESENCE_STATUSES = ["online", "idle", "dnd", "offline"] as const;
 
 // Extend session type
