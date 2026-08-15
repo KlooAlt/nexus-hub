@@ -1,15 +1,29 @@
-
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
-import * as schema from "@shared/schema";
+import * as schema from "../shared/schema.js";
 
 const { Pool } = pg;
 
-if (!process.env.DATABASE_URL) {
-  throw new Error(
-    "DATABASE_URL must be set. Did you forget to provision a database?",
-  );
+const databaseUrl = process.env.DATABASE_URL;
+
+if (!databaseUrl) {
+  throw new Error("DATABASE_URL must be set before the API can start.");
 }
 
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+declare global {
+  // eslint-disable-next-line no-var
+  var __nexusHubPgPool: pg.Pool | undefined;
+}
+
+export const pool =
+  globalThis.__nexusHubPgPool ??
+  new Pool({
+    connectionString: databaseUrl,
+    max: 5,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 10000,
+  });
+
+globalThis.__nexusHubPgPool = pool;
+
 export const db = drizzle(pool, { schema });

@@ -1,43 +1,22 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import express from "express";
-import { createServer } from "http";
-import { registerRoutes } from "../server/routes";
+import type { Express } from "express";
 
-const app = express();
-const httpServer = createServer(app);
+type AppModule = {
+  app: Express;
+  initializeApp: () => Promise<void>;
+};
 
-declare module "http" {
-  interface IncomingMessage {
-    rawBody: unknown;
+let appModulePromise: Promise<AppModule> | undefined;
+
+function loadServerApp(): Promise<AppModule> {
+  if (!appModulePromise) {
+    // The server graph is emitted by `tsc -p tsconfig.vercel.json` before
+    // Vercel bundles this function. The generated file is JavaScript; the
+    // source files remain TypeScript.
+    // @ts-ignore Generated during the Vercel build.
+    appModulePromise = import("../dist/vercel/server/app.js") as Promise<AppModule>;
   }
-}
-
-app.use(
-  express.json({
-    limit: "50mb",
-    verify: (req, _res, buf) => {
-      req.rawBody = buf;
-    },
-  }),
-);
-
-app.use(express.urlencoded({ extended: false }));
-
-let initialized = false;
-let initPromise: Promise<void> | undefined;
-
-async function initialize() {
-  if (initialized) return;
-
-  if (!initPromise) {
-    initPromise = (async () => {
-      await registerRoutes(httpServer, app);
-
-      initialized = true;
-    })();
-  }
-
-  await initPromise;
+  return appModulePromise;
 }
 
 export default async function handler(
@@ -45,11 +24,11 @@ export default async function handler(
   res: VercelResponse,
 ) {
   try {
-    await initialize();
-
-    return app(req, res);
+    const serverApp = await loadServerApp();
+    await serverApp.initializeApp();
+    return serverApp.app(req, res);
   } catch (error) {
-    console.error("API FUNCTION ERROR:", error);
+    console.error("API initialization failed:", error);
 
     if (!res.headersSent) {
       return res.status(500).json({
