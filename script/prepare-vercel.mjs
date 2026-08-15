@@ -18,7 +18,7 @@ const replacements = [
       'cookie: { maxAge: 86400000 },',
       'cookie: { maxAge: 86400000, httpOnly: true, secure: true, sameSite: "lax" },',
     ],
-    ['secret: process.env.SESSION_SECRET || "super secret hacker key",', 'secret: process.env.SESSION_SECRET,'],
+    ['secret: process.env.SESSION_SECRET || "super secret hacker key",', 'secret: process.env.SESSION_SECRET!,'],
   ]],
   ["server/storage.ts", [
     [
