@@ -11,9 +11,9 @@ let appModulePromise: Promise<AppModule> | undefined;
 function loadServerApp(): Promise<AppModule> {
   if (!appModulePromise) {
     // The server graph is emitted by `tsc -p tsconfig.vercel.json` before
-    // Vercel bundles this function. The generated file is intentionally a
-    // JavaScript import; the source file is TypeScript.
-    // @ts-expect-error Generated during the Vercel build.
+    // Vercel bundles this function. The generated file is JavaScript; the
+    // source files remain TypeScript.
+    // @ts-ignore Generated during the Vercel build.
     appModulePromise = import("../dist/vercel/server/app.js") as Promise<AppModule>;
   }
   return appModulePromise;
