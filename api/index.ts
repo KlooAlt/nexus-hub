@@ -1,12 +1,9 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import type { Express } from "express";
 import { createRequire } from "node:module";
 
-type ServerApp = typeof import("express").default & {
-  (req: VercelRequest, res: VercelResponse): unknown;
-};
-
 type AppModule = {
-  app: ServerApp;
+  app: Express;
   initializeApp: () => Promise<void>;
 };
 
